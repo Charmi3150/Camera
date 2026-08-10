@@ -107,9 +107,18 @@
   }
   #video{ width:100%; height:100%; object-fit:contain; background:#000; }
   #frameLayer{ position:absolute; inset:0; pointer-events:none; }
-  #frameRect{
-    position:absolute; border:3px solid var(--marker);
+  #captureBounds{
+    position:absolute; border:2px solid rgba(255,255,255,.5);
     box-shadow:0 0 0 2000px rgba(0,0,0,.55);
+    pointer-events:none;
+  }
+  #captureLabel{
+    position:absolute; top:6px; left:6px; font-size:9px; font-weight:700;
+    background:rgba(255,255,255,.85); color:var(--ink); padding:3px 6px; border-radius:5px;
+    white-space:nowrap; pointer-events:none; text-transform:uppercase; letter-spacing:.03em;
+  }
+  #frameRect{
+    position:absolute; border:3px solid var(--marker); border-style:dashed;
     pointer-events:auto; touch-action:none;
   }
   #frameRect::before{
@@ -245,7 +254,7 @@
   <!-- SETUP -->
   <div id="setup">
     <div class="headline">Kies je formaat</div>
-    <p class="lead">Dit bepaalt de vorm van het kader waarin je sticker steeds moet staan. Elke foto wordt op exact dit formaat bijgesneden.</p>
+    <p class="lead">Elke foto wordt op dit volledige formaat gemaakt (gecentreerd uitgesneden uit het camerabeeld). Het sleepbare kadertje tijdens het fotograferen is enkel een guide om je sticker steeds op dezelfde plek te positioneren.</p>
 
     <div class="section-label">Beeldverhouding</div>
     <div class="chipgrid" id="aspectChips"></div>
@@ -285,6 +294,9 @@
     <div id="stage">
       <video id="video" playsinline muted autoplay></video>
       <div id="frameLayer">
+        <div id="captureBounds">
+          <div id="captureLabel">Volledige foto</div>
+        </div>
         <div id="frameRect">
           <div id="frameLabel">1</div>
           <img id="ghostImg">
@@ -444,6 +456,7 @@
       await openStream(facingMode);
       toast(facingMode==='environment' ? 'Achtercamera' : 'Frontcamera');
       checkTorch();
+      renderFrameRect();
     }catch(e){ toast('Kon niet wisselen van camera'); }
   };
 
@@ -483,8 +496,34 @@
     frameRect.style.top = (rect.y*sh)+'px';
     frameRect.style.width = (rect.w*sw)+'px';
     frameRect.style.height = (rect.h*sh)+'px';
+    renderCaptureBounds();
   }
   window.addEventListener('resize', renderFrameRect);
+
+  /* Werkelijke foto-grens: het volledige gekozen formaat, gecentreerd
+     uitgesneden uit het zichtbare camerabeeld. Puur ter info — het
+     kleine frameRect hierboven is enkel een sleepbare positioneer-guide. */
+  function renderCaptureBounds(){
+    const cb = $('captureBounds');
+    const vw = video.videoWidth, vh = video.videoHeight;
+    if (!vw){ cb.style.display = 'none'; return; }
+    const sw = stage.clientWidth, sh = stage.clientHeight;
+    const videoAR = vw/vh, stageAR = sw/sh;
+    let dispW, dispH, offX, offY;
+    if (videoAR > stageAR){ dispW = sw; dispH = sw/videoAR; offX=0; offY=(sh-dispH)/2; }
+    else { dispH = sh; dispW = sh*videoAR; offY=0; offX=(sw-dispW)/2; }
+
+    const targetRatio = aspect.w/aspect.h;
+    let cropW, cropH;
+    if ((dispW/dispH) > targetRatio){ cropH = dispH; cropW = dispH*targetRatio; }
+    else { cropW = dispW; cropH = dispW/targetRatio; }
+
+    cb.style.display = 'block';
+    cb.style.left = (offX + (dispW-cropW)/2) + 'px';
+    cb.style.top = (offY + (dispH-cropH)/2) + 'px';
+    cb.style.width = cropW + 'px';
+    cb.style.height = cropH + 'px';
+  }
 
   function pt(e){
     const t = e.touches ? e.touches[0] : e;
@@ -528,7 +567,7 @@
 
   $('reframeBtn').onclick = ()=>{
     frameRect.style.outline = '2px dashed #fff';
-    toast('Sleep het kader of de hoek-handle om te herpositioneren');
+    toast('Sleep het kader of de hoek-handle — dit is enkel een guide, de volledige foto wordt altijd gemaakt');
     setTimeout(()=>{ frameRect.style.outline='none'; }, 2500);
   };
 
@@ -567,28 +606,27 @@
     const vw = video.videoWidth, vh = video.videoHeight;
     if (!vw){ toast('Camera nog niet klaar'); return; }
 
-    // map on-screen frame rect (fractions of stage) -> actual video pixel crop
-    // video is object-fit:contain inside stage, so compute letterbox offsets
-    const sw = stage.clientWidth, sh = stage.clientHeight;
-    const videoAR = vw/vh, stageAR = sw/sh;
-    let dispW, dispH, offX, offY;
-    if (videoAR > stageAR){ dispW = sw; dispH = sw/videoAR; offX=0; offY=(sh-dispH)/2; }
-    else { dispH = sh; dispW = sh*videoAR; offY=0; offX=(sw-dispW)/2; }
-
-    const rectPxOnScreen = { x: rect.x*sw, y: rect.y*sh, w: rect.w*sw, h: rect.h*sh };
-    const relX = (rectPxOnScreen.x - offX)/dispW;
-    const relY = (rectPxOnScreen.y - offY)/dispH;
-    const relW = rectPxOnScreen.w/dispW;
-    const relH = rectPxOnScreen.h/dispH;
-
-    const sx = clamp(relX,0,1)*vw, sy = clamp(relY,0,1)*vh;
-    const swid = clamp(relW,0.01,1)*vw, shei = clamp(relH,0.01,1)*vh;
+    // Het kadertje op het scherm is enkel een positioneer-guideline.
+    // De foto zelf wordt altijd het VOLLEDIGE gekozen formaat: een gecentreerde
+    // uitsnede uit het camerabeeld op de gekozen beeldverhouding (aspect).
+    const targetRatio = aspect.w / aspect.h;
+    const videoRatio = vw / vh;
+    let cropW, cropH;
+    if (videoRatio > targetRatio){
+      cropH = vh;
+      cropW = vh * targetRatio;
+    } else {
+      cropW = vw;
+      cropH = vw / targetRatio;
+    }
+    const sx = (vw - cropW) / 2;
+    const sy = (vh - cropH) / 2;
 
     const canvas = document.createElement('canvas');
-    canvas.width = Math.round(swid);
-    canvas.height = Math.round(shei);
+    canvas.width = Math.round(cropW);
+    canvas.height = Math.round(cropH);
     const ctx = canvas.getContext('2d');
-    ctx.drawImage(video, sx, sy, swid, shei, 0, 0, canvas.width, canvas.height);
+    ctx.drawImage(video, sx, sy, cropW, cropH, 0, 0, canvas.width, canvas.height);
 
     canvas.toBlob((blob)=>{
       const url = URL.createObjectURL(blob);
