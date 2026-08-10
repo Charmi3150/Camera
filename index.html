@@ -116,7 +116,6 @@
     cursor:pointer; box-shadow:0 6px 0 var(--line);
   }
   #startBtn:active{ transform:translateY(4px); box-shadow:0 2px 0 var(--line); }
-  #permNote{ font-size:11px; opacity:.5; margin-top:10px; line-height:1.5; }
 
   /* ---------- CAMERA SCREEN ---------- */
   #camScreen{ display:none; flex:1; flex-direction:column; min-height:0; }
@@ -190,6 +189,12 @@
     padding:0 14px 10px; background:var(--panel);
   }
   #portraitCtl label{ font-size:10px; opacity:.6; white-space:nowrap; text-transform:uppercase; letter-spacing:.06em; }
+  #brightnessCtl{
+    display:flex; align-items:center; gap:8px;
+    padding:0 14px 10px; background:var(--panel);
+  }
+  #brightnessCtl label{ font-size:10px; opacity:.6; white-space:nowrap; text-transform:uppercase; letter-spacing:.06em; }
+  #brightnessReset{ width:30px; height:30px; font-size:13px; flex:0 0 auto; }
 
   #shutterRow{
     display:flex; align-items:center; justify-content:center; gap:22px;
@@ -286,15 +291,17 @@
   #aspectModal .lead{ font-size:12px; opacity:.6; margin:0 0 16px; line-height:1.5; }
   #aspectModal .row{ display:flex; gap:8px; margin-top:14px; }
 
-  /* stijl/filter modal */
+  /* stijl/filter modal — lichte backdrop, camera moet zichtbaar blijven om te kunnen vergelijken */
   #filterModal{
-    position:fixed; inset:0; background:rgba(0,0,0,.85); z-index:55;
+    position:fixed; inset:0; background:rgba(0,0,0,.12); z-index:55;
     display:none; align-items:flex-end; justify-content:center;
+    pointer-events:none;
   }
   #filterModal .modalCard{
     width:100%; max-width:560px; background:var(--panel);
     border-top:3px solid var(--line); border-radius:18px 18px 0 0;
     padding:20px 16px 22px; max-height:80vh; overflow-y:auto;
+    pointer-events:auto;
   }
   #filterModal .headline{ font-size:16px; margin-bottom:4px; }
   #filterModal .lead{ font-size:12px; opacity:.6; margin:0 0 4px; line-height:1.5; }
@@ -380,7 +387,6 @@
     </select>
 
     <button id="startBtn">Camera starten</button>
-    <p id="permNote">Safari vraagt om cameratoegang — geef die toestemming. De foto's blijven op je toestel; er wordt niets naar een server gestuurd.</p>
   </div>
 
   <!-- ERROR -->
@@ -423,6 +429,11 @@
     <div id="portraitCtl" style="display:none;">
       <label>Vervaging achtergrond</label>
       <input type="range" id="portraitBlur" min="4" max="30" value="14">
+    </div>
+    <div id="brightnessCtl">
+      <label>☀️ Helderheid</label>
+      <input type="range" id="brightnessSlider" min="-50" max="50" value="0">
+      <button class="iconbtn" id="brightnessReset" title="Reset helderheid">↺</button>
     </div>
 
     <div id="shutterRow">
@@ -516,6 +527,7 @@
   ];
   let currentFilter = FILTERS[0];
   let portraitOn = false;
+  let brightnessValue = 0; // -50..50, namaak-belichting (echte EV-controle kan niet via de browser)
 
   let stream = null, videoTrack = null;
   let facingMode = 'environment';
@@ -623,6 +635,7 @@
       fileFmt, fileQual,
       filterId: currentFilter.id,
       portraitOn,
+      brightnessValue,
       createdAt: currentProjectCreatedAt,
       updatedAt: Date.now(),
       frames: frames.map(f=>({blob:f.blob, guideRect:f.guideRect}))
@@ -684,6 +697,7 @@
     fileFmt = p.fileFmt; fileQual = p.fileQual;
     currentFilter = FILTERS.find(f=>f.id===p.filterId) || FILTERS[0];
     portraitOn = !!p.portraitOn;
+    brightnessValue = typeof p.brightnessValue === 'number' ? p.brightnessValue : 0;
     frames = (p.frames||[]).map(f=>({ blob:f.blob, url:URL.createObjectURL(f.blob), guideRect:f.guideRect }));
     facingMode = 'environment';
 
@@ -696,6 +710,7 @@
       renderFrameRect();
       checkTorch();
       listCameraDevices();
+      $('brightnessSlider').value = brightnessValue;
       selectFilter(currentFilter.id);
       $('portraitToggle').classList.toggle('active', portraitOn);
       $('portraitCtl').style.display = portraitOn ? 'flex' : 'none';
@@ -750,6 +765,7 @@
     currentProjectCreatedAt = null;
     currentFilter = FILTERS[0];
     portraitOn = false;
+    brightnessValue = 0;
 
     if (aspect.w === 0){
       const cw = parseFloat($('customW').value)||1, ch = parseFloat($('customH').value)||1;
@@ -769,6 +785,7 @@
       renderFrameRect();
       checkTorch();
       listCameraDevices();
+      $('brightnessSlider').value = 0;
       selectFilter(currentFilter.id);
       $('portraitToggle').classList.remove('active');
       $('portraitCtl').style.display = 'none';
@@ -1040,6 +1057,16 @@
   };
 
   /* ---------------- STIJL / FILTERS ---------------- */
+  function totalFilterCss(){
+    const parts = [];
+    if (currentFilter.css) parts.push(currentFilter.css);
+    if (brightnessValue !== 0) parts.push(`brightness(${(1 + brightnessValue/100).toFixed(2)})`);
+    return parts.join(' ') || 'none';
+  }
+  function applyLiveFilter(){
+    video.style.filter = totalFilterCss();
+  }
+
   function buildFilterStrip(){
     const wrap = $('filterStrip');
     wrap.innerHTML = '';
@@ -1056,7 +1083,7 @@
     const f = FILTERS.find(x=>x.id===id);
     if (!f) return;
     currentFilter = f;
-    video.style.filter = f.css || 'none';
+    applyLiveFilter();
     $('filterLabel').textContent = f.label;
     [...$('filterStrip').children].forEach(c=>c.classList.toggle('selected', c.dataset.id===id));
     if (currentProjectId) saveCurrentProject();
@@ -1077,6 +1104,24 @@
     const chip = el && el.closest('.filterChip');
     if (chip) selectFilter(chip.dataset.id);
   }
+
+  /* ---------------- HELDERHEID (namaak-belichting) ----------------
+     Echte hardware-belichting (EV) is niet bereikbaar via Safari's
+     camera-API — dit is een visueel helderheids-filter, live toegepast
+     en meegebakken in de foto, net als de stijlen hierboven. */
+  $('brightnessSlider').oninput = (e)=>{
+    brightnessValue = parseInt(e.target.value);
+    applyLiveFilter();
+  };
+  $('brightnessSlider').addEventListener('change', ()=>{
+    if (currentProjectId) saveCurrentProject();
+  });
+  $('brightnessReset').onclick = ()=>{
+    brightnessValue = 0;
+    $('brightnessSlider').value = 0;
+    applyLiveFilter();
+    if (currentProjectId) saveCurrentProject();
+  };
 
   /* ---------------- PORTRET (namaak-bokeh) ---------------- */
   $('portraitToggle').onclick = ()=>{
@@ -1187,7 +1232,7 @@
     canvas.height = Math.round(cropH);
     const ctx = canvas.getContext('2d');
     // stijl/filter meteen mee bakken in de foto, zelfde look als de live preview
-    ctx.filter = currentFilter.css || 'none';
+    ctx.filter = totalFilterCss();
     ctx.drawImage(video, sx, sy, cropW, cropH, 0, 0, canvas.width, canvas.height);
     ctx.filter = 'none';
 
