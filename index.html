@@ -44,18 +44,18 @@
   /* ---------- TOP BAR ---------- */
   #topbar{
     display:flex; align-items:center; justify-content:space-between;
-    padding:10px 12px; gap:8px;
+    padding:10px 10px; gap:6px;
     border-bottom:3px solid var(--line);
     background:var(--panel);
     z-index:20;
   }
-  #topbar .headline{ font-size:15px; }
+  #topbar .headline{ font-size:14px; }
   #topbar .sub{ font-size:10px; opacity:.55; text-transform:none; letter-spacing:0; font-family:'Space Grotesk';}
   .iconbtn{
     background:var(--panel-2); color:var(--paper);
-    border:2px solid var(--line); border-radius:10px;
-    width:38px; height:38px; display:flex; align-items:center; justify-content:center;
-    font-size:16px; cursor:pointer;
+    border:2px solid var(--line); border-radius:9px;
+    width:34px; height:34px; display:flex; align-items:center; justify-content:center;
+    font-size:15px; cursor:pointer; flex:0 0 auto;
   }
   .iconbtn.active{ background:var(--marker); border-color:var(--marker); }
 
@@ -197,8 +197,9 @@
   }
 
   #bottomBar{
-    display:flex; gap:8px; padding:10px 12px 14px; background:var(--ink);
+    display:flex; flex-direction:column; gap:8px; padding:10px 12px 14px; background:var(--ink);
   }
+  #bottomBar .row{ display:flex; gap:8px; }
   .barbtn{
     flex:1; border:2px solid var(--line); background:var(--panel-2); color:var(--paper);
     border-radius:10px; padding:11px 8px; font-size:11px; font-weight:700;
@@ -206,6 +207,7 @@
     display:flex; flex-direction:column; align-items:center; gap:2px;
   }
   .barbtn.primary{ background:var(--ok); color:var(--ink); border-color:var(--paper); }
+  .barbtn.danger{ background:var(--panel-2); color:var(--marker); border-color:var(--marker); }
 
   /* preview player modal */
   #previewModal{
@@ -220,6 +222,20 @@
     color:#fff; font-size:16px;
   }
   #fpsLabel{ font-size:12px; opacity:.7; min-width:70px; text-align:center;}
+
+  /* aspect-change modal */
+  #aspectModal{
+    position:fixed; inset:0; background:rgba(0,0,0,.85); z-index:55;
+    display:none; align-items:flex-end; justify-content:center;
+  }
+  #aspectModal .modalCard{
+    width:100%; max-width:560px; background:var(--panel);
+    border-top:3px solid var(--line); border-radius:18px 18px 0 0;
+    padding:20px 16px 22px; max-height:80vh; overflow-y:auto;
+  }
+  #aspectModal .headline{ font-size:16px; margin-bottom:4px; }
+  #aspectModal .lead{ font-size:12px; opacity:.6; margin:0 0 16px; line-height:1.5; }
+  #aspectModal .row{ display:flex; gap:8px; margin-top:14px; }
 
   #toast{
     position:fixed; left:50%; bottom:26px; transform:translateX(-50%) translateY(20px);
@@ -245,7 +261,9 @@
       <div class="headline">📎 Stopmotion Camera</div>
       <div class="sub" id="topbarSub">kader instellen</div>
     </div>
-    <div style="display:flex; gap:8px;">
+    <div style="display:flex; gap:6px;">
+      <button class="iconbtn" id="homeBtn" title="Terug naar start">🏠</button>
+      <button class="iconbtn" id="aspectBtn" title="Formaat wijzigen">📐</button>
       <button class="iconbtn" id="switchCamBtn" title="Camera wisselen">⟲</button>
       <button class="iconbtn" id="torchBtn" title="Zaklamp">💡</button>
     </div>
@@ -324,9 +342,14 @@
     <div id="filmstrip"></div>
 
     <div id="bottomBar">
-      <button class="barbtn" id="reframeBtn">Kader<br>aanpassen</button>
-      <button class="barbtn primary" id="saveAllBtn">Bewaar alles<br>naar Foto's</button>
-      <button class="barbtn" id="zipBtn">Download<br>als ZIP</button>
+      <div class="row">
+        <button class="barbtn" id="reframeBtn">Kader<br>aanpassen</button>
+        <button class="barbtn primary" id="saveAllBtn">Bewaar alles<br>naar Foto's</button>
+        <button class="barbtn" id="zipBtn">Download<br>als ZIP</button>
+      </div>
+      <div class="row">
+        <button class="barbtn danger" id="clearAllBtn">Wis alle foto's</button>
+      </div>
     </div>
   </div>
 
@@ -337,6 +360,23 @@
       <button class="iconbtn" id="playPause">⏸</button>
       <span id="fpsLabel">8 fps</span>
       <input type="range" id="fpsSlider" min="2" max="20" value="8" style="width:120px;">
+    </div>
+  </div>
+
+  <div id="aspectModal">
+    <div class="modalCard">
+      <div class="headline">Formaat wijzigen</div>
+      <p class="lead">Nieuwe foto's gebruiken deze verhouding. Al gemaakte foto's blijven ongewijzigd.</p>
+      <div class="chipgrid" id="aspectChips2"></div>
+      <div class="customrow" id="customRow2" style="display:none;">
+        <input type="number" id="customW2" value="1" min="1" max="20"> :
+        <input type="number" id="customH2" value="1" min="1" max="20">
+        <span style="font-size:12px; opacity:.6;">breedte : hoogte</span>
+      </div>
+      <div class="row">
+        <button class="barbtn" id="cancelAspectBtn">Annuleren</button>
+        <button class="barbtn primary" id="applyAspectBtn">Toepassen</button>
+      </div>
     </div>
   </div>
 
@@ -423,6 +463,68 @@
       $('errText').textContent = 'Kon de camera niet starten: ' + (err.message||err.name||'onbekende fout') + '. Controleer camera-toestemming in Safari-instellingen.';
     }
   }
+
+  /* ---------------- HOME ---------------- */
+  $('homeBtn').onclick = ()=>{
+    if (stream){ stream.getTracks().forEach(t=>t.stop()); stream = null; }
+    camScreen.style.display = 'none';
+    errScreen.style.display = 'none';
+    setup.style.display = 'block';
+  };
+
+  /* ---------------- ASPECT WIJZIGEN (na start) ---------------- */
+  let pendingAspect = aspect;
+  const chipWrap2 = $('aspectChips2');
+  ASPECTS.forEach((a,i)=>{
+    const c = document.createElement('div');
+    c.className = 'chip';
+    c.innerHTML = a.w? `${a.label}` : `Vrij <small>eigen ratio</small>`;
+    c.onclick = ()=>{
+      [...chipWrap2.children].forEach(x=>x.classList.remove('selected'));
+      c.classList.add('selected');
+      pendingAspect = a;
+      $('customRow2').style.display = a.w===0 ? 'flex' : 'none';
+    };
+    chipWrap2.appendChild(c);
+  });
+
+  $('aspectBtn').onclick = ()=>{
+    // huidige aspect markeren in de modal
+    pendingAspect = aspect;
+    [...chipWrap2.children].forEach((c,i)=>{
+      c.classList.toggle('selected', ASPECTS[i].label === aspect.label);
+    });
+    $('customRow2').style.display = 'none';
+    $('aspectModal').style.display = 'flex';
+  };
+  $('cancelAspectBtn').onclick = ()=>{ $('aspectModal').style.display = 'none'; };
+  $('applyAspectBtn').onclick = ()=>{
+    if (pendingAspect.w === 0){
+      const cw = parseFloat($('customW2').value)||1, ch = parseFloat($('customH2').value)||1;
+      pendingAspect = {label:`${cw}:${ch}`, w:cw, h:ch};
+    }
+    aspect = pendingAspect;
+    $('aspectModal').style.display = 'none';
+    initRectForAspect();
+    renderFrameRect();
+    $('topbarSub').textContent = frames.length + ' foto' + (frames.length===1?'':"'s") + ' · ' + aspect.label;
+    toast(`Formaat gewijzigd naar ${aspect.label}`);
+  };
+
+  /* ---------------- WIS ALLES ---------------- */
+  $('clearAllBtn').onclick = ()=>{
+    if (!frames.length){ toast('Geen foto\'s om te wissen'); return; }
+    const ok = confirm(`Alle ${frames.length} foto's wissen? Dit kan niet ongedaan gemaakt worden.`);
+    if (!ok) return;
+    frames.forEach(f=>{
+      URL.revokeObjectURL(f.url);
+      if (f._ghostUrl) URL.revokeObjectURL(f._ghostUrl);
+    });
+    frames = [];
+    renderFilmstrip();
+    updateGhost();
+    toast('Alle foto\'s gewist');
+  };
 
   async function openStream(facing){
     if (stream){ stream.getTracks().forEach(t=>t.stop()); }
