@@ -77,6 +77,25 @@
   }
   .chip small{ opacity:.55; font-weight:400; }
   .chip.selected{ background:var(--marker); border-color:var(--paper); }
+
+  #projectsList{ margin-bottom:6px; }
+  #projectsList .empty{ font-size:12px; opacity:.5; margin:0 0 22px; line-height:1.5; }
+  .projectCard{
+    display:flex; align-items:center; gap:10px;
+    border:2px solid var(--line); background:var(--panel-2);
+    border-radius:12px; padding:8px; margin-bottom:10px;
+  }
+  .projectThumb{
+    width:48px; height:48px; border-radius:8px; overflow:hidden; flex:0 0 auto;
+    background:#000; display:flex; align-items:center; justify-content:center;
+    font-size:18px; border:2px solid var(--line);
+  }
+  .projectThumb img{ width:100%; height:100%; object-fit:cover; display:block; }
+  .projectInfo{ flex:1; min-width:0; }
+  .pname{ font-size:13px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .pmeta{ font-size:11px; opacity:.55; margin-top:2px; }
+  .projectCard .iconbtn{ width:34px; height:34px; font-size:14px; }
+
   .customrow{ display:flex; gap:8px; align-items:center; margin-top:2px; }
   .customrow input{
     width:64px; background:var(--panel-2); border:2px solid var(--line);
@@ -259,7 +278,7 @@
   <div id="topbar">
     <div>
       <div class="headline">📎 Stopmotion Camera</div>
-      <div class="sub" id="topbarSub">kader instellen</div>
+      <div class="sub" id="topbarSub" style="cursor:pointer; text-decoration:underline dotted; text-underline-offset:2px;">kader instellen</div>
     </div>
     <div style="display:flex; gap:6px;">
       <button class="iconbtn" id="homeBtn" title="Terug naar start">🏠</button>
@@ -271,7 +290,11 @@
 
   <!-- SETUP -->
   <div id="setup">
-    <div class="headline">Kies je formaat</div>
+    <div class="headline">Jouw projecten</div>
+    <p class="lead" style="margin-bottom:12px;">Elk project wordt automatisch bewaard op dit toestel zodra je een eerste foto maakt.</p>
+    <div id="projectsList"></div>
+
+    <div class="headline" style="margin-top:28px;">Nieuw project</div>
     <p class="lead">Elke foto wordt op dit volledige formaat gemaakt (gecentreerd uitgesneden uit het camerabeeld). Het sleepbare kadertje tijdens het fotograferen is enkel een guide om je sticker steeds op dezelfde plek te positioneren.</p>
 
     <div class="section-label">Beeldverhouding</div>
@@ -361,6 +384,8 @@
       <span id="fpsLabel">8 fps</span>
       <input type="range" id="fpsSlider" min="2" max="20" value="8" style="width:120px;">
     </div>
+    <button class="barbtn primary" id="exportVideoBtn" style="max-width:240px; margin-top:20px;">Exporteer als video</button>
+    <p id="exportStatus" style="font-size:11px; opacity:.6; margin-top:8px; text-align:center; max-width:80%;"></p>
   </div>
 
   <div id="aspectModal">
@@ -409,6 +434,11 @@
   let dragStart = null;
   let fileFmt = 'image/jpeg', fileQual = 0.95;
 
+  // project persistentie (IndexedDB)
+  let currentProjectId = null;
+  let currentProjectName = null;
+  let currentProjectCreatedAt = null;
+
   const $ = id => document.getElementById(id);
   const setup = $('setup'), camScreen = $('camScreen'), errScreen = $('errScreen');
   const video = $('video'), stage = $('stage'), frameRect = $('frameRect'), ghostImg = $('ghostImg');
@@ -418,6 +448,178 @@
     clearTimeout(toast._h);
     toast._h = setTimeout(()=>t.classList.remove('show'), ms);
   }
+
+  function updateTopbarSub(){
+    const name = currentProjectName ? currentProjectName + ' · ' : '';
+    $('topbarSub').textContent = name + frames.length + ' foto' + (frames.length===1?'':"'s") + ' · ' + aspect.label;
+  }
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  function formatDate(d){
+    const dd=String(d.getDate()).padStart(2,'0'), mm=String(d.getMonth()+1).padStart(2,'0');
+    const hh=String(d.getHours()).padStart(2,'0'), mi=String(d.getMinutes()).padStart(2,'0');
+    return `${dd}/${mm} ${hh}:${mi}`;
+  }
+
+  /* ---------------- IndexedDB: projecten opslaan ---------------- */
+  const DB_NAME = 'stopmotionDB', DB_VERSION = 1, STORE = 'projects';
+  function openDB(){
+    return new Promise((resolve,reject)=>{
+      const req = indexedDB.open(DB_NAME, DB_VERSION);
+      req.onupgradeneeded = (e)=>{
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, {keyPath:'id'});
+      };
+      req.onsuccess = ()=>resolve(req.result);
+      req.onerror = ()=>reject(req.error);
+    });
+  }
+  async function dbPut(record){
+    const db = await openDB();
+    return new Promise((resolve,reject)=>{
+      const tx = db.transaction(STORE,'readwrite');
+      tx.objectStore(STORE).put(record);
+      tx.oncomplete = ()=>resolve();
+      tx.onerror = ()=>reject(tx.error);
+    });
+  }
+  async function dbGetAll(){
+    const db = await openDB();
+    return new Promise((resolve,reject)=>{
+      const tx = db.transaction(STORE,'readonly');
+      const req = tx.objectStore(STORE).getAll();
+      req.onsuccess = ()=>resolve(req.result || []);
+      req.onerror = ()=>reject(req.error);
+    });
+  }
+  async function dbGet(id){
+    const db = await openDB();
+    return new Promise((resolve,reject)=>{
+      const tx = db.transaction(STORE,'readonly');
+      const req = tx.objectStore(STORE).get(id);
+      req.onsuccess = ()=>resolve(req.result || null);
+      req.onerror = ()=>reject(req.error);
+    });
+  }
+  async function dbDelete(id){
+    const db = await openDB();
+    return new Promise((resolve,reject)=>{
+      const tx = db.transaction(STORE,'readwrite');
+      tx.objectStore(STORE).delete(id);
+      tx.oncomplete = ()=>resolve();
+      tx.onerror = ()=>reject(tx.error);
+    });
+  }
+
+  function ensureProjectStarted(){
+    if (currentProjectId) return;
+    currentProjectId = 'p_' + Date.now();
+    currentProjectCreatedAt = Date.now();
+    currentProjectName = 'Project ' + formatDate(new Date());
+  }
+  function saveCurrentProject(){
+    if (!currentProjectId) return;
+    const record = {
+      id: currentProjectId,
+      name: currentProjectName,
+      aspect: {label:aspect.label, w:aspect.w, h:aspect.h},
+      fileFmt, fileQual,
+      createdAt: currentProjectCreatedAt,
+      updatedAt: Date.now(),
+      frames: frames.map(f=>({blob:f.blob, guideRect:f.guideRect}))
+    };
+    dbPut(record).catch(e=>console.error('project opslaan mislukt', e));
+  }
+
+  async function renderProjectsList(){
+    const wrap = $('projectsList');
+    let projects = [];
+    try{ projects = await dbGetAll(); }catch(e){ console.error(e); }
+    if (renderProjectsList._urls){ renderProjectsList._urls.forEach(u=>URL.revokeObjectURL(u)); }
+    renderProjectsList._urls = [];
+
+    if (!projects.length){
+      wrap.innerHTML = '<p class="empty">Nog geen opgeslagen projecten.</p>';
+      return;
+    }
+    projects.sort((a,b)=>b.updatedAt-a.updatedAt);
+    wrap.innerHTML = '';
+    projects.forEach(p=>{
+      const card = document.createElement('div');
+      card.className = 'projectCard';
+      let thumbHtml = '📁';
+      if (p.frames && p.frames.length){
+        const u = URL.createObjectURL(p.frames[p.frames.length-1].blob);
+        renderProjectsList._urls.push(u);
+        thumbHtml = `<img src="${u}">`;
+      }
+      card.innerHTML = `
+        <div class="projectThumb">${thumbHtml}</div>
+        <div class="projectInfo">
+          <div class="pname">${escapeHtml(p.name||'Project')}</div>
+          <div class="pmeta">${(p.frames||[]).length} foto's · ${escapeHtml(p.aspect.label)}</div>
+        </div>
+        <button class="iconbtn projectOpenBtn" title="Openen">▶</button>
+        <button class="iconbtn projectDelBtn" title="Verwijderen">🗑</button>
+      `;
+      card.querySelector('.projectOpenBtn').onclick = ()=>openProject(p.id);
+      card.querySelector('.projectDelBtn').onclick = async (e)=>{
+        e.stopPropagation();
+        if (!confirm(`Project "${p.name}" verwijderen? Dit kan niet ongedaan gemaakt worden.`)) return;
+        await dbDelete(p.id);
+        renderProjectsList();
+      };
+      wrap.appendChild(card);
+    });
+  }
+
+  async function openProject(id){
+    let p;
+    try{ p = await dbGet(id); }catch(e){ toast('Kon project niet laden'); return; }
+    if (!p){ toast('Project niet gevonden'); return; }
+
+    currentProjectId = p.id;
+    currentProjectName = p.name;
+    currentProjectCreatedAt = p.createdAt;
+    aspect = p.aspect;
+    fileFmt = p.fileFmt; fileQual = p.fileQual;
+    frames = (p.frames||[]).map(f=>({ blob:f.blob, url:URL.createObjectURL(f.blob), guideRect:f.guideRect }));
+    facingMode = 'environment';
+
+    try{
+      await openStream(facingMode);
+      setup.style.display = 'none';
+      errScreen.style.display = 'none';
+      camScreen.style.display = 'flex';
+      initRectForAspect();
+      renderFrameRect();
+      checkTorch();
+      listCameraDevices();
+      renderFilmstrip();
+      updateGhost();
+      updateTopbarSub();
+      toast(`Project "${p.name}" geopend`);
+    }catch(err){
+      console.error(err);
+      setup.style.display = 'none';
+      errScreen.style.display = 'flex';
+      $('errText').textContent = 'Kon de camera niet starten: ' + (err.message||err.name||'onbekende fout');
+    }
+  }
+
+  function renameProject(){
+    if (!currentProjectId){ toast('Maak eerst een foto om dit project te starten'); return; }
+    const newName = prompt('Naam van dit project:', currentProjectName);
+    if (newName && newName.trim()){
+      currentProjectName = newName.trim();
+      saveCurrentProject();
+      updateTopbarSub();
+    }
+  }
+  $('topbarSub').onclick = renameProject;
 
   /* ---------------- SETUP SCREEN ---------------- */
   const chipWrap = $('aspectChips');
@@ -438,6 +640,14 @@
   $('retryBtn').onclick = startCamera;
 
   async function startCamera(){
+    // "Nieuw project" start altijd leeg — bestaande projecten worden via
+    // de projectenlijst geopend, niet via deze knop.
+    frames.forEach(f=>{ URL.revokeObjectURL(f.url); if (f._ghostUrl) URL.revokeObjectURL(f._ghostUrl); });
+    frames = [];
+    currentProjectId = null;
+    currentProjectName = null;
+    currentProjectCreatedAt = null;
+
     if (aspect.w === 0){
       const cw = parseFloat($('customW').value)||1, ch = parseFloat($('customH').value)||1;
       aspect = {label:`${cw}:${ch}`, w:cw, h:ch};
@@ -451,11 +661,13 @@
       setup.style.display = 'none';
       errScreen.style.display = 'none';
       camScreen.style.display = 'flex';
-      $('topbarSub').textContent = aspect.label + ' · kader instellen';
+      updateTopbarSub();
       initRectForAspect();
       renderFrameRect();
       checkTorch();
       listCameraDevices();
+      renderFilmstrip();
+      updateGhost();
     }catch(err){
       console.error(err);
       setup.style.display = 'none';
@@ -470,6 +682,7 @@
     camScreen.style.display = 'none';
     errScreen.style.display = 'none';
     setup.style.display = 'block';
+    renderProjectsList();
   };
 
   /* ---------------- ASPECT WIJZIGEN (na start) ---------------- */
@@ -507,7 +720,8 @@
     $('aspectModal').style.display = 'none';
     initRectForAspect();
     renderFrameRect();
-    $('topbarSub').textContent = frames.length + ' foto' + (frames.length===1?'':"'s") + ' · ' + aspect.label;
+    updateTopbarSub();
+    if (currentProjectId) saveCurrentProject();
     toast(`Formaat gewijzigd naar ${aspect.label}`);
   };
 
@@ -523,6 +737,7 @@
     frames = [];
     renderFilmstrip();
     updateGhost();
+    if (currentProjectId) saveCurrentProject();
     toast('Alle foto\'s gewist');
   };
 
@@ -796,9 +1011,11 @@
       const url = URL.createObjectURL(blob);
       const guideRect = computeGuideRectFraction();
       frames.push({url, blob, guideRect});
+      ensureProjectStarted();
       renderFilmstrip();
       updateGhost();
       flashScreen();
+      saveCurrentProject();
     }, fileFmt, fileQual);
   }
 
@@ -813,6 +1030,7 @@
     const removed = frames.pop();
     if (removed._ghostUrl) URL.revokeObjectURL(removed._ghostUrl);
     renderFilmstrip(); updateGhost();
+    if (currentProjectId) saveCurrentProject();
   };
 
   /* ---------------- FILMSTRIP ---------------- */
@@ -829,6 +1047,7 @@
         if (f._ghostUrl) URL.revokeObjectURL(f._ghostUrl);
         frames.splice(i,1);
         renderFilmstrip(); updateGhost();
+        if (currentProjectId) saveCurrentProject();
       };
       strip.appendChild(d);
     });
@@ -836,10 +1055,11 @@
       strip.innerHTML = '<div class="thumb empty">geen<br>foto\'s</div>';
     }
     $('frameLabel').textContent = frames.length+1;
-    $('topbarSub').textContent = frames.length + ' foto' + (frames.length===1?'':"'s") + ' · ' + aspect.label;
+    updateTopbarSub();
     strip.scrollLeft = strip.scrollWidth;
   }
   renderFilmstrip();
+  renderProjectsList();
 
   /* ---------------- SAVE / SHARE ---------------- */
   async function fileFor(f, idx){
@@ -916,6 +1136,107 @@
     $('previewImg').src = frames[playIdx].url;
     playIdx = (playIdx+1) % frames.length;
     playTimer = setTimeout(runPreview, 1000/fps);
+  }
+
+  /* ---------------- VIDEO EXPORT ---------------- */
+  function loadImage(url){
+    return new Promise((resolve,reject)=>{
+      const img = new Image();
+      img.onload = ()=>resolve(img);
+      img.onerror = reject;
+      img.src = url;
+    });
+  }
+  function sleep(ms){ return new Promise(r=>setTimeout(r, ms)); }
+
+  $('exportVideoBtn').onclick = exportVideo;
+
+  async function exportVideo(){
+    if (!frames.length){ toast('Nog geen foto\'s om te exporteren'); return; }
+    if (!('MediaRecorder' in window) || !HTMLCanvasElement.prototype.captureStream){
+      toast('Video-export wordt niet ondersteund in deze browser');
+      return;
+    }
+
+    const btn = $('exportVideoBtn');
+    const statusEl = $('exportStatus');
+    btn.disabled = true;
+    btn.textContent = 'Bezig…';
+    playing = false;
+    clearTimeout(playTimer);
+    $('playPause').textContent = '▶';
+
+    try{
+      const first = await loadImage(frames[0].url);
+      const maxDim = 1440; // performance/geheugen-cap voor opname
+      let w = first.naturalWidth, h = first.naturalHeight;
+      if (Math.max(w,h) > maxDim){
+        const scale = maxDim / Math.max(w,h);
+        w = Math.round(w*scale); h = Math.round(h*scale);
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(first, 0, 0, w, h);
+
+      const candidates = [
+        'video/mp4;codecs=avc1',
+        'video/mp4',
+        'video/webm;codecs=vp9',
+        'video/webm;codecs=vp8',
+        'video/webm'
+      ];
+      const mimeType = candidates.find(t => window.MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) || '';
+
+      const captureStream = canvas.captureStream(fps);
+      const recorder = new MediaRecorder(captureStream, mimeType ? {mimeType, videoBitsPerSecond: 8_000_000} : {videoBitsPerSecond: 8_000_000});
+      const chunks = [];
+      recorder.ondataavailable = (e)=>{ if (e.data && e.data.size) chunks.push(e.data); };
+      const stopped = new Promise(resolve=>{ recorder.onstop = resolve; });
+
+      recorder.start();
+      const frameDelay = 1000/fps;
+      await sleep(frameDelay);
+
+      for (let i=1; i<frames.length; i++){
+        statusEl.textContent = `Foto ${i+1} van ${frames.length}…`;
+        const img = await loadImage(frames[i].url);
+        ctx.clearRect(0,0,w,h);
+        ctx.drawImage(img, 0, 0, w, h);
+        await sleep(frameDelay);
+      }
+      await sleep(frameDelay); // laatste frame nog even vasthouden
+      recorder.stop();
+      await stopped;
+
+      const outType = mimeType || 'video/webm';
+      const blob = new Blob(chunks, {type: outType});
+      const ext = outType.includes('mp4') ? 'mp4' : 'webm';
+      const fileName = (currentProjectName ? currentProjectName.replace(/[^\w\-]+/g,'_') : 'stopmotion') + '.' + ext;
+      const file = new File([blob], fileName, {type: outType});
+
+      statusEl.textContent = '';
+      if (navigator.canShare && navigator.canShare({files:[file]})){
+        try{
+          await navigator.share({files:[file], title:'Stopmotion video'});
+          toast('Deelvenster geopend — kies "Bewaar video"');
+        }catch(e){
+          downloadFile(file);
+          toast('Video gedownload');
+        }
+      } else {
+        downloadFile(file);
+        toast('Video gedownload');
+      }
+    }catch(err){
+      console.error(err);
+      toast('Video-export mislukt: ' + (err.message||err.name||'onbekende fout'));
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Exporteer als video';
+      statusEl.textContent = '';
+    }
   }
 
 })();
