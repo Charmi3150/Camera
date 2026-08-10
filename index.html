@@ -20,6 +20,7 @@
     --panel:#141416;
     --panel-2:#1c1c1f;
     --ok:#38e07a;
+    --accent2:#f2b544;
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
   html,body{
@@ -173,6 +174,23 @@
   .ghostctl label{ font-size:10px; opacity:.6; white-space:nowrap; text-transform:uppercase; letter-spacing:.06em;}
   input[type=range]{ flex:1; accent-color:var(--marker); }
 
+  #toolsRow{
+    display:flex; gap:8px; padding:0 14px 10px; background:var(--panel);
+  }
+  .toolbtn{
+    flex:1; background:var(--panel-2); color:var(--paper);
+    border:2px solid var(--line); border-radius:9px;
+    padding:8px 10px; font-size:11px; font-weight:600;
+    cursor:pointer; text-align:center;
+  }
+  .toolbtn b{ font-weight:700; }
+  .toolbtn.active{ background:var(--marker); border-color:var(--marker); }
+  #portraitCtl{
+    display:flex; align-items:center; gap:8px;
+    padding:0 14px 10px; background:var(--panel);
+  }
+  #portraitCtl label{ font-size:10px; opacity:.6; white-space:nowrap; text-transform:uppercase; letter-spacing:.06em; }
+
   #shutterRow{
     display:flex; align-items:center; justify-content:center; gap:22px;
     padding:14px 20px 18px; background:var(--panel);
@@ -246,8 +264,12 @@
     flex-direction:row; gap:8px;
     padding:13px 22px; margin-top:22px;
     border-radius:12px; font-size:12px;
+    background:var(--panel-2); color:var(--accent2);
+    border:2px solid var(--accent2);
+    box-shadow:0 4px 0 rgba(0,0,0,.4);
   }
-  #exportVideoBtn:disabled{ opacity:.6; cursor:default; }
+  #exportVideoBtn:active{ transform:translateY(2px); box-shadow:0 2px 0 rgba(0,0,0,.4); }
+  #exportVideoBtn:disabled{ opacity:.55; cursor:default; transform:none; box-shadow:none; }
   #exportStatus{ flex:0 0 auto; }
 
   /* aspect-change modal */
@@ -263,6 +285,36 @@
   #aspectModal .headline{ font-size:16px; margin-bottom:4px; }
   #aspectModal .lead{ font-size:12px; opacity:.6; margin:0 0 16px; line-height:1.5; }
   #aspectModal .row{ display:flex; gap:8px; margin-top:14px; }
+
+  /* stijl/filter modal */
+  #filterModal{
+    position:fixed; inset:0; background:rgba(0,0,0,.85); z-index:55;
+    display:none; align-items:flex-end; justify-content:center;
+  }
+  #filterModal .modalCard{
+    width:100%; max-width:560px; background:var(--panel);
+    border-top:3px solid var(--line); border-radius:18px 18px 0 0;
+    padding:20px 16px 22px; max-height:80vh; overflow-y:auto;
+  }
+  #filterModal .headline{ font-size:16px; margin-bottom:4px; }
+  #filterModal .lead{ font-size:12px; opacity:.6; margin:0 0 4px; line-height:1.5; }
+  #filterStrip{
+    display:flex; gap:16px; overflow-x:auto; padding:12px 4px 20px;
+    touch-action:pan-x;
+  }
+  .filterChip{
+    display:flex; flex-direction:column; align-items:center; gap:6px;
+    flex:0 0 auto; cursor:pointer;
+  }
+  .filterChip .swatch{
+    width:54px; height:54px; border-radius:50%;
+    border:3px solid var(--line);
+    background:linear-gradient(135deg,#e8d9c3 0%,#9a9a9a 100%);
+  }
+  .filterChip.selected .swatch{
+    border-color:var(--marker); box-shadow:0 0 0 3px rgba(255,61,90,.35);
+  }
+  .filterChip span{ font-size:10px; opacity:.75; text-align:center; max-width:66px; }
 
   #toast{
     position:fixed; left:50%; bottom:26px; transform:translateX(-50%) translateY(20px);
@@ -364,6 +416,15 @@
       <button class="iconbtn" id="lockAspectBtn" title="Kader vastzetten op ratio / vrij slepen">🔓</button>
     </div>
 
+    <div id="toolsRow">
+      <button class="toolbtn" id="filterBtn">🎨 Stijl: <b id="filterLabel">Standaard</b></button>
+      <button class="toolbtn" id="portraitToggle">🌫️ Portret</button>
+    </div>
+    <div id="portraitCtl" style="display:none;">
+      <label>Vervaging achtergrond</label>
+      <input type="range" id="portraitBlur" min="4" max="30" value="14">
+    </div>
+
     <div id="shutterRow">
       <div class="sidebtn" id="undoBtn">↩<span>Wis laatste</span></div>
       <div id="shutter"></div>
@@ -374,12 +435,15 @@
 
     <div id="bottomBar">
       <div class="row">
-        <button class="barbtn" id="reframeBtn">Kader<br>aanpassen</button>
         <button class="barbtn primary" id="saveAllBtn">Bewaar alles<br>naar Foto's</button>
         <button class="barbtn" id="zipBtn">Download<br>als ZIP</button>
       </div>
       <div class="row">
-        <button class="barbtn danger" id="clearAllBtn">Wis alle foto's</button>
+        <button class="barbtn" id="saveProjectBtn">Project<br>bewaren</button>
+        <button class="barbtn danger" id="clearAllBtn">Wis alle<br>foto's</button>
+      </div>
+      <div class="row">
+        <button class="barbtn danger" id="deleteProjectBtn">Verwijder dit project</button>
       </div>
     </div>
   </div>
@@ -392,7 +456,7 @@
       <span id="fpsLabel">8 fps</span>
       <input type="range" id="fpsSlider" min="2" max="20" value="8" style="width:120px;">
     </div>
-    <button class="barbtn primary" id="exportVideoBtn">🎬 Exporteer als video</button>
+    <button class="barbtn" id="exportVideoBtn">🎬 Exporteer als video</button>
     <p id="exportStatus" style="font-size:11px; opacity:.6; margin-top:8px; text-align:center; max-width:80%;"></p>
   </div>
 
@@ -410,6 +474,15 @@
         <button class="barbtn" id="cancelAspectBtn">Annuleren</button>
         <button class="barbtn primary" id="applyAspectBtn">Toepassen</button>
       </div>
+    </div>
+  </div>
+
+  <div id="filterModal">
+    <div class="modalCard">
+      <div class="headline">Stijl kiezen</div>
+      <p class="lead">Sleep met je vinger over de bolletjes om te bekijken, of tik er één aan. Wordt live toegepast en meegebakken in je foto's.</p>
+      <div id="filterStrip"></div>
+      <button class="barbtn primary" id="closeFilterBtn">Sluiten</button>
     </div>
   </div>
 
@@ -431,6 +504,19 @@
     {label:'Vrij', w:0, h:0}
   ];
   let aspect = ASPECTS[0];
+
+  const FILTERS = [
+    {id:'standaard',   label:'Standaard',   css:''},
+    {id:'levendig',    label:'Levendig',    css:'saturate(1.35) contrast(1.08)'},
+    {id:'warm',        label:'Warm',        css:'sepia(0.25) saturate(1.15) hue-rotate(-8deg) brightness(1.03)'},
+    {id:'koel',        label:'Koel',        css:'saturate(1.1) hue-rotate(12deg) brightness(1.02)'},
+    {id:'zwartwit',    label:'Zwart-wit',   css:'grayscale(1) contrast(1.1)'},
+    {id:'vintage',     label:'Vintage',     css:'sepia(0.35) saturate(0.8) contrast(0.95) brightness(1.05)'},
+    {id:'dramatisch',  label:'Dramatisch',  css:'contrast(1.3) saturate(1.1) brightness(0.95)'}
+  ];
+  let currentFilter = FILTERS[0];
+  let portraitOn = false;
+
   let stream = null, videoTrack = null;
   let facingMode = 'environment';
   let devices = [];
@@ -535,6 +621,8 @@
       name: currentProjectName,
       aspect: {label:aspect.label, w:aspect.w, h:aspect.h},
       fileFmt, fileQual,
+      filterId: currentFilter.id,
+      portraitOn,
       createdAt: currentProjectCreatedAt,
       updatedAt: Date.now(),
       frames: frames.map(f=>({blob:f.blob, guideRect:f.guideRect}))
@@ -594,6 +682,8 @@
     currentProjectCreatedAt = p.createdAt;
     aspect = p.aspect;
     fileFmt = p.fileFmt; fileQual = p.fileQual;
+    currentFilter = FILTERS.find(f=>f.id===p.filterId) || FILTERS[0];
+    portraitOn = !!p.portraitOn;
     frames = (p.frames||[]).map(f=>({ blob:f.blob, url:URL.createObjectURL(f.blob), guideRect:f.guideRect }));
     facingMode = 'environment';
 
@@ -606,6 +696,9 @@
       renderFrameRect();
       checkTorch();
       listCameraDevices();
+      selectFilter(currentFilter.id);
+      $('portraitToggle').classList.toggle('active', portraitOn);
+      $('portraitCtl').style.display = portraitOn ? 'flex' : 'none';
       renderFilmstrip();
       updateGhost();
       updateTopbarSub();
@@ -655,6 +748,8 @@
     currentProjectId = null;
     currentProjectName = null;
     currentProjectCreatedAt = null;
+    currentFilter = FILTERS[0];
+    portraitOn = false;
 
     if (aspect.w === 0){
       const cw = parseFloat($('customW').value)||1, ch = parseFloat($('customH').value)||1;
@@ -674,6 +769,9 @@
       renderFrameRect();
       checkTorch();
       listCameraDevices();
+      selectFilter(currentFilter.id);
+      $('portraitToggle').classList.remove('active');
+      $('portraitCtl').style.display = 'none';
       renderFilmstrip();
       updateGhost();
     }catch(err){
@@ -747,6 +845,38 @@
     updateGhost();
     if (currentProjectId) saveCurrentProject();
     toast('Alle foto\'s gewist');
+  };
+
+  /* ---------------- PROJECT BEWAREN / VERWIJDEREN ---------------- */
+  $('saveProjectBtn').onclick = ()=>{
+    ensureProjectStarted();
+    saveCurrentProject();
+    updateTopbarSub();
+    toast(`Project "${currentProjectName}" bewaard`);
+  };
+
+  $('deleteProjectBtn').onclick = async ()=>{
+    if (!currentProjectId){
+      toast('Dit project is nog niet bewaard');
+      return;
+    }
+    const ok = confirm(`Project "${currentProjectName}" volledig verwijderen? Dit kan niet ongedaan gemaakt worden.`);
+    if (!ok) return;
+    try{ await dbDelete(currentProjectId); }catch(e){ console.error(e); }
+    frames.forEach(f=>{
+      URL.revokeObjectURL(f.url);
+      if (f._ghostUrl) URL.revokeObjectURL(f._ghostUrl);
+    });
+    frames = [];
+    currentProjectId = null;
+    currentProjectName = null;
+    currentProjectCreatedAt = null;
+    if (stream){ stream.getTracks().forEach(t=>t.stop()); stream = null; }
+    camScreen.style.display = 'none';
+    errScreen.style.display = 'none';
+    setup.style.display = 'block';
+    renderProjectsList();
+    toast('Project verwijderd');
   };
 
   async function openStream(facing){
@@ -890,12 +1020,6 @@
   window.addEventListener('pointerup', ()=>{ dragging=null; });
   function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
 
-  $('reframeBtn').onclick = ()=>{
-    frameRect.style.outline = '2px dashed #fff';
-    toast('Sleep het kader of de hoek-handle — dit is enkel een guide, de volledige foto wordt altijd gemaakt');
-    setTimeout(()=>{ frameRect.style.outline='none'; }, 2500);
-  };
-
   /* ---------------- GHOST / ONION SKIN ---------------- */
   $('ghostOpacity').oninput = (e)=>{
     ghostImg.style.opacity = (e.target.value/100).toString();
@@ -914,6 +1038,54 @@
     btn.classList.toggle('active', lockAspect);
     toast(lockAspect ? `Kader vastgezet op ${aspect.label}` : 'Kader vrij versleepbaar');
   };
+
+  /* ---------------- STIJL / FILTERS ---------------- */
+  function buildFilterStrip(){
+    const wrap = $('filterStrip');
+    wrap.innerHTML = '';
+    FILTERS.forEach(f=>{
+      const c = document.createElement('div');
+      c.className = 'filterChip' + (f.id===currentFilter.id ? ' selected' : '');
+      c.dataset.id = f.id;
+      c.innerHTML = `<div class="swatch" style="filter:${f.css || 'none'}"></div><span>${f.label}</span>`;
+      c.onclick = ()=>selectFilter(f.id);
+      wrap.appendChild(c);
+    });
+  }
+  function selectFilter(id){
+    const f = FILTERS.find(x=>x.id===id);
+    if (!f) return;
+    currentFilter = f;
+    video.style.filter = f.css || 'none';
+    $('filterLabel').textContent = f.label;
+    [...$('filterStrip').children].forEach(c=>c.classList.toggle('selected', c.dataset.id===id));
+    if (currentProjectId) saveCurrentProject();
+  }
+  buildFilterStrip();
+
+  $('filterBtn').onclick = ()=>{ $('filterModal').style.display = 'flex'; };
+  $('closeFilterBtn').onclick = ()=>{ $('filterModal').style.display = 'none'; };
+
+  // sleep (scrub) over de stijlenrij om live te bekijken, net als op iPhone
+  let scrubbing = false;
+  $('filterStrip').addEventListener('pointerdown', (e)=>{ scrubbing = true; handleScrub(e); });
+  window.addEventListener('pointermove', (e)=>{ if (scrubbing) handleScrub(e); });
+  window.addEventListener('pointerup', ()=>{ scrubbing = false; });
+  function handleScrub(e){
+    const p = pt(e);
+    const el = document.elementFromPoint(p.x, p.y);
+    const chip = el && el.closest('.filterChip');
+    if (chip) selectFilter(chip.dataset.id);
+  }
+
+  /* ---------------- PORTRET (namaak-bokeh) ---------------- */
+  $('portraitToggle').onclick = ()=>{
+    portraitOn = !portraitOn;
+    $('portraitToggle').classList.toggle('active', portraitOn);
+    $('portraitCtl').style.display = portraitOn ? 'flex' : 'none';
+    if (currentProjectId) saveCurrentProject();
+  };
+
   function updateGhost(){
     if (ghostOn && frames.length){
       const last = frames[frames.length-1];
@@ -1008,16 +1180,40 @@
     }
     const sx = (vw - cropW) / 2;
     const sy = (vh - cropH) / 2;
+    const guideRect = computeGuideRectFraction();
 
     const canvas = document.createElement('canvas');
     canvas.width = Math.round(cropW);
     canvas.height = Math.round(cropH);
     const ctx = canvas.getContext('2d');
+    // stijl/filter meteen mee bakken in de foto, zelfde look als de live preview
+    ctx.filter = currentFilter.css || 'none';
     ctx.drawImage(video, sx, sy, cropW, cropH, 0, 0, canvas.width, canvas.height);
+    ctx.filter = 'none';
 
-    canvas.toBlob((blob)=>{
+    let finalCanvas = canvas;
+    if (portraitOn){
+      // namaak-portretmodus: alles buiten het kadertje vervagen, sticker scherp houden
+      const blurPx = parseInt($('portraitBlur').value) || 14;
+      const blurred = document.createElement('canvas');
+      blurred.width = canvas.width; blurred.height = canvas.height;
+      const bctx = blurred.getContext('2d');
+      bctx.filter = `blur(${blurPx}px)`;
+      bctx.drawImage(canvas, 0, 0);
+
+      finalCanvas = document.createElement('canvas');
+      finalCanvas.width = canvas.width; finalCanvas.height = canvas.height;
+      const fctx = finalCanvas.getContext('2d');
+      fctx.drawImage(blurred, 0, 0);
+      if (guideRect.w > 0 && guideRect.h > 0){
+        const gx = guideRect.x*canvas.width, gy = guideRect.y*canvas.height;
+        const gw = guideRect.w*canvas.width, gh = guideRect.h*canvas.height;
+        fctx.drawImage(canvas, gx, gy, gw, gh, gx, gy, gw, gh);
+      }
+    }
+
+    finalCanvas.toBlob((blob)=>{
       const url = URL.createObjectURL(blob);
-      const guideRect = computeGuideRectFraction();
       frames.push({url, blob, guideRect});
       ensureProjectStarted();
       renderFilmstrip();
