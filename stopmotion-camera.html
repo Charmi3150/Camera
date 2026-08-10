@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Stopmotion Camera</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  :root{
+    --ink:#0c0c0d;
+    --paper:#f7f5f0;
+    --marker:#ff3d5a;
+    --marker-dim:#b8283d;
+    --line:#0c0c0d;
+    --ghost:rgba(255,255,255,.55);
+    --panel:#141416;
+    --panel-2:#1c1c1f;
+    --ok:#38e07a;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{
+    margin:0; padding:0; height:100%;
+    background:var(--ink); color:var(--paper);
+    font-family:'Space Grotesk', system-ui, sans-serif;
+    overscroll-behavior:none;
+    -webkit-user-select:none; user-select:none;
+  }
+  h1,h2,.headline{
+    font-family:'Archivo Black', system-ui, sans-serif;
+    letter-spacing:.02em;
+    text-transform:uppercase;
+  }
+  #app{
+    display:flex; flex-direction:column;
+    height:100vh; height:100dvh;
+    max-width:560px; margin:0 auto;
+    position:relative; overflow:hidden;
+  }
+
+  /* ---------- TOP BAR ---------- */
+  #topbar{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:10px 12px; gap:8px;
+    border-bottom:3px solid var(--line);
+    background:var(--panel);
+    z-index:20;
+  }
+  #topbar .headline{ font-size:15px; }
+  #topbar .sub{ font-size:10px; opacity:.55; text-transform:none; letter-spacing:0; font-family:'Space Grotesk';}
+  .iconbtn{
+    background:var(--panel-2); color:var(--paper);
+    border:2px solid var(--line); border-radius:10px;
+    width:38px; height:38px; display:flex; align-items:center; justify-content:center;
+    font-size:16px; cursor:pointer;
+  }
+  .iconbtn.active{ background:var(--marker); border-color:var(--marker); }
+
+  /* ---------- SETUP SCREEN ---------- */
+  #setup{
+    flex:1; overflow-y:auto; padding:18px 16px 100px;
+  }
+  #setup .headline{ font-size:22px; margin:6px 0 2px; }
+  #setup p.lead{ font-size:13px; opacity:.65; margin:0 0 22px; line-height:1.5; }
+  .section-label{
+    font-size:11px; text-transform:uppercase; letter-spacing:.12em;
+    opacity:.5; margin:0 0 10px; font-weight:600;
+  }
+  .chipgrid{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom:24px; }
+  .chip{
+    border:2px solid var(--line); background:var(--panel-2); color:var(--paper);
+    padding:9px 14px; border-radius:10px; font-size:13px; font-weight:600;
+    cursor:pointer; display:flex; align-items:center; gap:6px;
+  }
+  .chip small{ opacity:.55; font-weight:400; }
+  .chip.selected{ background:var(--marker); border-color:var(--paper); }
+  .customrow{ display:flex; gap:8px; align-items:center; margin-top:2px; }
+  .customrow input{
+    width:64px; background:var(--panel-2); border:2px solid var(--line);
+    color:var(--paper); border-radius:8px; padding:8px; font-size:14px; text-align:center;
+    font-family:inherit;
+  }
+  select{
+    width:100%; background:var(--panel-2); color:var(--paper);
+    border:2px solid var(--line); border-radius:10px; padding:10px 12px;
+    font-size:13px; font-family:inherit; margin-bottom:24px;
+  }
+  #startBtn{
+    position:sticky; bottom:14px; width:100%;
+    background:var(--marker); color:var(--ink); border:3px solid var(--line);
+    border-radius:14px; padding:16px; font-family:'Archivo Black';
+    text-transform:uppercase; font-size:15px; letter-spacing:.03em;
+    cursor:pointer; box-shadow:0 6px 0 var(--line);
+  }
+  #startBtn:active{ transform:translateY(4px); box-shadow:0 2px 0 var(--line); }
+  #permNote{ font-size:11px; opacity:.5; margin-top:10px; line-height:1.5; }
+
+  /* ---------- CAMERA SCREEN ---------- */
+  #camScreen{ display:none; flex:1; flex-direction:column; min-height:0; }
+  #stage{
+    position:relative; flex:1; background:#000;
+    display:flex; align-items:center; justify-content:center;
+    overflow:hidden; min-height:0;
+  }
+  #video{ width:100%; height:100%; object-fit:contain; background:#000; }
+  #frameLayer{ position:absolute; inset:0; pointer-events:none; }
+  #frameRect{
+    position:absolute; border:3px solid var(--marker);
+    box-shadow:0 0 0 2000px rgba(0,0,0,.55);
+    pointer-events:auto; touch-action:none;
+  }
+  #frameRect::before{
+    content:''; position:absolute; inset:8px; border:1px dashed rgba(255,255,255,.35);
+    pointer-events:none;
+  }
+  #ghostImg{
+    position:absolute; inset:0; width:100%; height:100%;
+    object-fit:cover; pointer-events:none; display:none;
+  }
+  #resizeHandle{
+    position:absolute; right:-14px; bottom:-14px; width:30px; height:30px;
+    background:var(--marker); border:3px solid var(--paper); border-radius:50%;
+    pointer-events:auto; touch-action:none;
+  }
+  #frameLabel{
+    position:absolute; top:-26px; left:0; font-size:10px; font-weight:700;
+    background:var(--marker); color:var(--ink); padding:3px 7px; border-radius:6px;
+    white-space:nowrap; pointer-events:none;
+  }
+  .flash-overlay{
+    position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none;
+    transition:opacity .08s ease;
+  }
+
+  /* controls row above filmstrip */
+  #controls{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:10px 14px; gap:10px; background:var(--panel);
+    border-top:3px solid var(--line);
+  }
+  .ghostctl{ display:flex; align-items:center; gap:8px; flex:1; }
+  .ghostctl label{ font-size:10px; opacity:.6; white-space:nowrap; text-transform:uppercase; letter-spacing:.06em;}
+  input[type=range]{ flex:1; accent-color:var(--marker); }
+
+  #shutterRow{
+    display:flex; align-items:center; justify-content:center; gap:22px;
+    padding:14px 20px 18px; background:var(--panel);
+  }
+  #shutter{
+    width:74px; height:74px; border-radius:50%;
+    background:var(--marker); border:4px solid var(--paper);
+    box-shadow:0 0 0 3px var(--line);
+    cursor:pointer;
+  }
+  #shutter:active{ background:var(--marker-dim); }
+  .sidebtn{
+    display:flex; flex-direction:column; align-items:center; gap:3px;
+    font-size:9px; text-transform:uppercase; letter-spacing:.05em; opacity:.85;
+  }
+
+  /* filmstrip */
+  #filmstrip{
+    display:flex; gap:8px; overflow-x:auto; padding:10px 12px;
+    background:var(--ink); border-top:3px solid var(--line);
+  }
+  .thumb{
+    position:relative; flex:0 0 auto; width:56px; height:56px;
+    border:2px solid var(--line); border-radius:8px; overflow:hidden;
+    background:#000;
+  }
+  .thumb img{ width:100%; height:100%; object-fit:cover; display:block; }
+  .thumb .num{
+    position:absolute; top:2px; left:3px; font-size:9px; font-weight:700;
+    background:rgba(0,0,0,.6); padding:1px 4px; border-radius:4px;
+  }
+  .thumb .del{
+    position:absolute; top:1px; right:1px; width:16px; height:16px;
+    background:var(--marker); color:#fff; border-radius:50%;
+    font-size:10px; display:flex; align-items:center; justify-content:center;
+    line-height:1;
+  }
+  .thumb.empty{
+    display:flex; align-items:center; justify-content:center;
+    font-size:10px; opacity:.4; border-style:dashed;
+  }
+
+  #bottomBar{
+    display:flex; gap:8px; padding:10px 12px 14px; background:var(--ink);
+  }
+  .barbtn{
+    flex:1; border:2px solid var(--line); background:var(--panel-2); color:var(--paper);
+    border-radius:10px; padding:11px 8px; font-size:11px; font-weight:700;
+    text-transform:uppercase; letter-spacing:.03em; cursor:pointer;
+    display:flex; flex-direction:column; align-items:center; gap:2px;
+  }
+  .barbtn.primary{ background:var(--ok); color:var(--ink); border-color:var(--paper); }
+
+  /* preview player modal */
+  #previewModal{
+    position:fixed; inset:0; background:rgba(0,0,0,.92); z-index:50;
+    display:none; align-items:center; justify-content:center; flex-direction:column;
+  }
+  #previewModal img{ max-width:88%; max-height:60%; border:3px solid var(--paper); border-radius:10px; background:#000; }
+  #previewModal .pctl{ margin-top:18px; display:flex; gap:14px; align-items:center; }
+  #previewModal .pclose{
+    position:absolute; top:18px; right:18px; width:38px; height:38px;
+    border-radius:50%; background:var(--marker); border:2px solid var(--paper);
+    color:#fff; font-size:16px;
+  }
+  #fpsLabel{ font-size:12px; opacity:.7; min-width:70px; text-align:center;}
+
+  #toast{
+    position:fixed; left:50%; bottom:26px; transform:translateX(-50%) translateY(20px);
+    background:var(--paper); color:var(--ink); padding:10px 16px; border-radius:10px;
+    font-size:12px; font-weight:700; opacity:0; pointer-events:none; z-index:80;
+    transition:opacity .2s ease, transform .2s ease; border:2px solid var(--line);
+    max-width:80%; text-align:center;
+  }
+  #toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+  #errScreen{
+    display:none; flex:1; align-items:center; justify-content:center; flex-direction:column;
+    padding:30px; text-align:center; gap:12px;
+  }
+  #errScreen p{ font-size:13px; opacity:.7; line-height:1.6; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div id="topbar">
+    <div>
+      <div class="headline">📎 Stopmotion Camera</div>
+      <div class="sub" id="topbarSub">kader instellen</div>
+    </div>
+    <div style="display:flex; gap:8px;">
+      <button class="iconbtn" id="switchCamBtn" title="Camera wisselen">⟲</button>
+      <button class="iconbtn" id="torchBtn" title="Zaklamp">💡</button>
+    </div>
+  </div>
+
+  <!-- SETUP -->
+  <div id="setup">
+    <div class="headline">Kies je formaat</div>
+    <p class="lead">Dit bepaalt de vorm van het kader waarin je sticker steeds moet staan. Elke foto wordt op exact dit formaat bijgesneden.</p>
+
+    <div class="section-label">Beeldverhouding</div>
+    <div class="chipgrid" id="aspectChips"></div>
+
+    <div class="customrow" id="customRow" style="display:none;">
+      <input type="number" id="customW" value="1" min="1" max="20"> :
+      <input type="number" id="customH" value="1" min="1" max="20">
+      <span style="font-size:12px; opacity:.6;">breedte : hoogte</span>
+    </div>
+
+    <div class="section-label" style="margin-top:22px;">Bestandsformaat</div>
+    <select id="fileFormat">
+      <option value="image/jpeg|0.95">JPEG — hoge kwaliteit (aanbevolen, kleiner bestand)</option>
+      <option value="image/jpeg|1">JPEG — maximale kwaliteit</option>
+      <option value="image/png|1">PNG — lossless (grote bestanden)</option>
+    </select>
+
+    <div class="section-label">Camera</div>
+    <select id="cameraFacing">
+      <option value="environment">Achtercamera (aanbevolen)</option>
+      <option value="user">Frontcamera</option>
+    </select>
+
+    <button id="startBtn">Camera starten</button>
+    <p id="permNote">Safari vraagt om cameratoegang — geef die toestemming. De foto's blijven op je toestel; er wordt niets naar een server gestuurd.</p>
+  </div>
+
+  <!-- ERROR -->
+  <div id="errScreen">
+    <div class="headline" style="font-size:18px;">Geen camera-toegang</div>
+    <p id="errText">Controleer of je Safari toestemming hebt gegeven voor de camera (Instellingen → Safari → Camera), en probeer opnieuw.</p>
+    <button class="barbtn primary" id="retryBtn" style="max-width:200px;">Opnieuw proberen</button>
+  </div>
+
+  <!-- CAMERA -->
+  <div id="camScreen">
+    <div id="stage">
+      <video id="video" playsinline muted autoplay></video>
+      <div id="frameLayer">
+        <div id="frameRect">
+          <div id="frameLabel">1</div>
+          <img id="ghostImg">
+          <div id="resizeHandle"></div>
+        </div>
+      </div>
+      <div class="flash-overlay" id="flashOverlay"></div>
+    </div>
+
+    <div id="controls">
+      <div class="ghostctl">
+        <label>Ghost</label>
+        <input type="range" id="ghostOpacity" min="0" max="90" value="45">
+      </div>
+      <button class="iconbtn" id="ghostToggle" title="Onion skin aan/uit">👻</button>
+    </div>
+
+    <div id="shutterRow">
+      <div class="sidebtn" id="undoBtn">↩<span>Wis laatste</span></div>
+      <div id="shutter"></div>
+      <div class="sidebtn" id="previewBtn">▶<span>Preview</span></div>
+    </div>
+
+    <div id="filmstrip"></div>
+
+    <div id="bottomBar">
+      <button class="barbtn" id="reframeBtn">Kader<br>aanpassen</button>
+      <button class="barbtn primary" id="saveAllBtn">Bewaar alles<br>naar Foto's</button>
+      <button class="barbtn" id="zipBtn">Download<br>als ZIP</button>
+    </div>
+  </div>
+
+  <div id="previewModal">
+    <button class="pclose" id="previewClose">✕</button>
+    <img id="previewImg">
+    <div class="pctl">
+      <button class="iconbtn" id="playPause">⏸</button>
+      <span id="fpsLabel">8 fps</span>
+      <input type="range" id="fpsSlider" min="2" max="20" value="8" style="width:120px;">
+    </div>
+  </div>
+
+  <div id="toast"></div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---------------- STATE ---------------- */
+  const ASPECTS = [
+    {label:'1:1', w:1, h:1},
+    {label:'4:5', w:4, h:5},
+    {label:'3:4', w:3, h:4},
+    {label:'2:3', w:2, h:3},
+    {label:'9:16', w:9, h:16},
+    {label:'16:9', w:16, h:9},
+    {label:'Vrij', w:0, h:0}
+  ];
+  let aspect = ASPECTS[0];
+  let stream = null, videoTrack = null;
+  let facingMode = 'environment';
+  let devices = [];
+  let frames = []; // {url, blob}
+  let ghostOn = true;
+  let rect = {x:.2, y:.2, w:.6, h:.6}; // fractions of stage
+  let dragging = null; // 'move' | 'resize' | null
+  let dragStart = null;
+  let fileFmt = 'image/jpeg', fileQual = 0.95;
+
+  const $ = id => document.getElementById(id);
+  const setup = $('setup'), camScreen = $('camScreen'), errScreen = $('errScreen');
+  const video = $('video'), stage = $('stage'), frameRect = $('frameRect'), ghostImg = $('ghostImg');
+
+  function toast(msg, ms=2200){
+    const t = $('toast'); t.textContent = msg; t.classList.add('show');
+    clearTimeout(toast._h);
+    toast._h = setTimeout(()=>t.classList.remove('show'), ms);
+  }
+
+  /* ---------------- SETUP SCREEN ---------------- */
+  const chipWrap = $('aspectChips');
+  ASPECTS.forEach((a,i)=>{
+    const c = document.createElement('div');
+    c.className = 'chip' + (i===0?' selected':'');
+    c.innerHTML = a.w? `${a.label}` : `Vrij <small>eigen ratio</small>`;
+    c.onclick = ()=>{
+      [...chipWrap.children].forEach(x=>x.classList.remove('selected'));
+      c.classList.add('selected');
+      aspect = a;
+      $('customRow').style.display = a.w===0 ? 'flex' : 'none';
+    };
+    chipWrap.appendChild(c);
+  });
+
+  $('startBtn').onclick = startCamera;
+  $('retryBtn').onclick = startCamera;
+
+  async function startCamera(){
+    if (aspect.w === 0){
+      const cw = parseFloat($('customW').value)||1, ch = parseFloat($('customH').value)||1;
+      aspect = {label:`${cw}:${ch}`, w:cw, h:ch};
+    }
+    const [mime, q] = $('fileFormat').value.split('|');
+    fileFmt = mime; fileQual = parseFloat(q);
+    facingMode = $('cameraFacing').value;
+
+    try{
+      await openStream(facingMode);
+      setup.style.display = 'none';
+      errScreen.style.display = 'none';
+      camScreen.style.display = 'flex';
+      $('topbarSub').textContent = aspect.label + ' · kader instellen';
+      initRectForAspect();
+      renderFrameRect();
+      checkTorch();
+      listCameraDevices();
+    }catch(err){
+      console.error(err);
+      setup.style.display = 'none';
+      errScreen.style.display = 'flex';
+      $('errText').textContent = 'Kon de camera niet starten: ' + (err.message||err.name||'onbekende fout') + '. Controleer camera-toestemming in Safari-instellingen.';
+    }
+  }
+
+  async function openStream(facing){
+    if (stream){ stream.getTracks().forEach(t=>t.stop()); }
+    const constraints = {
+      audio:false,
+      video:{
+        facingMode:{ideal:facing},
+        width:{ideal:4032},
+        height:{ideal:3024}
+      }
+    };
+    stream = await navigator.mediaDevices.getUserMedia(constraints);
+    video.srcObject = stream;
+    videoTrack = stream.getVideoTracks()[0];
+    await new Promise(res=>{
+      if (video.readyState>=1) res();
+      else video.onloadedmetadata = ()=>res();
+    });
+    await video.play();
+  }
+
+  async function listCameraDevices(){
+    try{
+      devices = (await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='videoinput');
+    }catch(e){ devices = []; }
+  }
+
+  $('switchCamBtn').onclick = async ()=>{
+    facingMode = facingMode === 'environment' ? 'user' : 'environment';
+    try{
+      await openStream(facingMode);
+      toast(facingMode==='environment' ? 'Achtercamera' : 'Frontcamera');
+      checkTorch();
+    }catch(e){ toast('Kon niet wisselen van camera'); }
+  };
+
+  /* ---------------- TORCH ---------------- */
+  function checkTorch(){
+    const btn = $('torchBtn');
+    btn.classList.remove('active');
+    btn.style.display = 'flex';
+    try{
+      const caps = videoTrack.getCapabilities ? videoTrack.getCapabilities() : {};
+      if (!caps.torch) btn.style.display = 'none';
+    }catch(e){ btn.style.display = 'none'; }
+  }
+  let torchOn = false;
+  $('torchBtn').onclick = async ()=>{
+    torchOn = !torchOn;
+    try{
+      await videoTrack.applyConstraints({advanced:[{torch:torchOn}]});
+      $('torchBtn').classList.toggle('active', torchOn);
+    }catch(e){
+      toast('Zaklamp wordt niet ondersteund in Safari op dit toestel');
+      torchOn = false;
+    }
+  };
+
+  /* ---------------- FRAME RECT (drag / resize) ---------------- */
+  function initRectForAspect(){
+    const stageR = aspect.w/aspect.h;
+    let w = 0.72, h = w * (stage.clientWidth/stage.clientHeight) / stageR;
+    if (h > 0.85){ h = 0.85; w = h * stageR * (stage.clientHeight/stage.clientWidth); }
+    rect = { x:(1-w)/2, y:(1-h)/2, w, h };
+  }
+
+  function renderFrameRect(){
+    const sw = stage.clientWidth, sh = stage.clientHeight;
+    frameRect.style.left = (rect.x*sw)+'px';
+    frameRect.style.top = (rect.y*sh)+'px';
+    frameRect.style.width = (rect.w*sw)+'px';
+    frameRect.style.height = (rect.h*sh)+'px';
+  }
+  window.addEventListener('resize', renderFrameRect);
+
+  function pt(e){
+    const t = e.touches ? e.touches[0] : e;
+    return {x:t.clientX, y:t.clientY};
+  }
+
+  frameRect.addEventListener('pointerdown', (e)=>{
+    if (e.target.id === 'resizeHandle') return;
+    dragging = 'move';
+    dragStart = {p:pt(e), rect:{...rect}};
+    e.preventDefault();
+  });
+  $('resizeHandle').addEventListener('pointerdown', (e)=>{
+    dragging = 'resize';
+    dragStart = {p:pt(e), rect:{...rect}};
+    e.stopPropagation(); e.preventDefault();
+  });
+  window.addEventListener('pointermove', (e)=>{
+    if (!dragging) return;
+    const sw = stage.clientWidth, sh = stage.clientHeight;
+    const p = pt(e);
+    const dx = (p.x - dragStart.p.x)/sw, dy = (p.y - dragStart.p.y)/sh;
+    if (dragging === 'move'){
+      rect.x = clamp(dragStart.rect.x + dx, 0, 1-rect.w);
+      rect.y = clamp(dragStart.rect.y + dy, 0, 1-rect.h);
+    } else {
+      const ratio = aspect.w/aspect.h;
+      let newW = clamp(dragStart.rect.w + dx, 0.12, 1-dragStart.rect.x);
+      let newH = newW * (sw/sh) / ratio;
+      if (dragStart.rect.y + newH > 1){ newH = 1-dragStart.rect.y; newW = newH * (sh/sw) * ratio; }
+      rect.w = newW; rect.h = newH;
+    }
+    renderFrameRect();
+  }, {passive:true});
+  window.addEventListener('pointerup', ()=>{ dragging=null; });
+  function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
+
+  $('reframeBtn').onclick = ()=>{
+    frameRect.style.outline = '2px dashed #fff';
+    toast('Sleep het kader of de hoek-handle om te herpositioneren');
+    setTimeout(()=>{ frameRect.style.outline='none'; }, 2500);
+  };
+
+  /* ---------------- GHOST / ONION SKIN ---------------- */
+  $('ghostOpacity').oninput = (e)=>{
+    ghostImg.style.opacity = (e.target.value/100).toString();
+  };
+  $('ghostToggle').onclick = ()=>{
+    ghostOn = !ghostOn;
+    $('ghostToggle').classList.toggle('active', ghostOn);
+    updateGhost();
+  };
+  $('ghostToggle').classList.add('active');
+  function updateGhost(){
+    if (ghostOn && frames.length){
+      ghostImg.src = frames[frames.length-1].url;
+      ghostImg.style.display = 'block';
+      ghostImg.style.opacity = ($('ghostOpacity').value/100).toString();
+    } else {
+      ghostImg.style.display = 'none';
+    }
+  }
+
+  /* ---------------- CAPTURE ---------------- */
+  $('shutter').onclick = capturePhoto;
+
+  function capturePhoto(){
+    const vw = video.videoWidth, vh = video.videoHeight;
+    if (!vw){ toast('Camera nog niet klaar'); return; }
+
+    // map on-screen frame rect (fractions of stage) -> actual video pixel crop
+    // video is object-fit:contain inside stage, so compute letterbox offsets
+    const sw = stage.clientWidth, sh = stage.clientHeight;
+    const videoAR = vw/vh, stageAR = sw/sh;
+    let dispW, dispH, offX, offY;
+    if (videoAR > stageAR){ dispW = sw; dispH = sw/videoAR; offX=0; offY=(sh-dispH)/2; }
+    else { dispH = sh; dispW = sh*videoAR; offY=0; offX=(sw-dispW)/2; }
+
+    const rectPxOnScreen = { x: rect.x*sw, y: rect.y*sh, w: rect.w*sw, h: rect.h*sh };
+    const relX = (rectPxOnScreen.x - offX)/dispW;
+    const relY = (rectPxOnScreen.y - offY)/dispH;
+    const relW = rectPxOnScreen.w/dispW;
+    const relH = rectPxOnScreen.h/dispH;
+
+    const sx = clamp(relX,0,1)*vw, sy = clamp(relY,0,1)*vh;
+    const swid = clamp(relW,0.01,1)*vw, shei = clamp(relH,0.01,1)*vh;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(swid);
+    canvas.height = Math.round(shei);
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, sx, sy, swid, shei, 0, 0, canvas.width, canvas.height);
+
+    canvas.toBlob((blob)=>{
+      const url = URL.createObjectURL(blob);
+      frames.push({url, blob});
+      renderFilmstrip();
+      updateGhost();
+      flashScreen();
+    }, fileFmt, fileQual);
+  }
+
+  function flashScreen(){
+    const f = $('flashOverlay');
+    f.style.opacity = '0.85';
+    setTimeout(()=>{ f.style.opacity='0'; }, 90);
+  }
+
+  $('undoBtn').onclick = ()=>{
+    if (!frames.length) return;
+    frames.pop();
+    renderFilmstrip(); updateGhost();
+  };
+
+  /* ---------------- FILMSTRIP ---------------- */
+  function renderFilmstrip(){
+    const strip = $('filmstrip');
+    strip.innerHTML = '';
+    frames.forEach((f,i)=>{
+      const d = document.createElement('div');
+      d.className = 'thumb';
+      d.innerHTML = `<img src="${f.url}"><div class="num">${i+1}</div><div class="del">✕</div>`;
+      d.querySelector('.del').onclick = (e)=>{
+        e.stopPropagation();
+        URL.revokeObjectURL(f.url);
+        frames.splice(i,1);
+        renderFilmstrip(); updateGhost();
+      };
+      strip.appendChild(d);
+    });
+    if (!frames.length){
+      strip.innerHTML = '<div class="thumb empty">geen<br>foto\'s</div>';
+    }
+    $('frameLabel').textContent = frames.length+1;
+    $('topbarSub').textContent = frames.length + ' foto' + (frames.length===1?'':"'s") + ' · ' + aspect.label;
+    strip.scrollLeft = strip.scrollWidth;
+  }
+  renderFilmstrip();
+
+  /* ---------------- SAVE / SHARE ---------------- */
+  async function fileFor(f, idx){
+    const ext = fileFmt === 'image/png' ? 'png' : 'jpg';
+    return new File([f.blob], `stopmotion_${String(idx+1).padStart(3,'0')}.${ext}`, {type:fileFmt});
+  }
+
+  $('saveAllBtn').onclick = async ()=>{
+    if (!frames.length){ toast('Nog geen foto\'s om te bewaren'); return; }
+    const files = await Promise.all(frames.map((f,i)=>fileFor(f,i)));
+    if (navigator.canShare && navigator.canShare({files})){
+      try{
+        await navigator.share({files, title:'Stopmotion foto\'s'});
+        toast('Deelvenster geopend — kies "Bewaar afbeeldingen"');
+        return;
+      }catch(e){ /* user cancelled or failed, fall through to download */ }
+    }
+    // fallback: trigger sequential downloads
+    files.forEach((file, i)=>{
+      setTimeout(()=>downloadFile(file), i*250);
+    });
+    toast('Downloads gestart — open ze en bewaar handmatig in Foto\'s');
+  };
+
+  function downloadFile(file){
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(file);
+    a.download = file.name;
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+
+  $('zipBtn').onclick = async ()=>{
+    if (!frames.length){ toast('Nog geen foto\'s'); return; }
+    if (typeof JSZip === 'undefined'){ toast('ZIP-library kon niet laden'); return; }
+    const zip = new JSZip();
+    const ext = fileFmt==='image/png'?'png':'jpg';
+    frames.forEach((f,i)=>{ zip.file(`stopmotion_${String(i+1).padStart(3,'0')}.${ext}`, f.blob); });
+    toast('ZIP wordt gemaakt…');
+    const content = await zip.generateAsync({type:'blob'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(content);
+    a.download = 'stopmotion.zip';
+    document.body.appendChild(a); a.click(); a.remove();
+    toast('ZIP gedownload');
+  };
+
+  /* individual save via long-press style — tap thumb num area for single share could be added later */
+
+  /* ---------------- PREVIEW PLAYER ---------------- */
+  let playing = true, playTimer = null, playIdx = 0, fps = 8;
+  $('previewBtn').onclick = ()=>{
+    if (!frames.length){ toast('Nog geen foto\'s'); return; }
+    $('previewModal').style.display = 'flex';
+    playIdx = 0; playing = true;
+    $('playPause').textContent = '⏸';
+    runPreview();
+  };
+  $('previewClose').onclick = ()=>{
+    $('previewModal').style.display = 'none';
+    clearTimeout(playTimer);
+  };
+  $('playPause').onclick = ()=>{
+    playing = !playing;
+    $('playPause').textContent = playing ? '⏸' : '▶';
+    if (playing) runPreview();
+  };
+  $('fpsSlider').oninput = (e)=>{
+    fps = parseInt(e.target.value);
+    $('fpsLabel').textContent = fps + ' fps';
+  };
+  function runPreview(){
+    clearTimeout(playTimer);
+    if (!playing || !frames.length) return;
+    $('previewImg').src = frames[playIdx].url;
+    playIdx = (playIdx+1) % frames.length;
+    playTimer = setTimeout(runPreview, 1000/fps);
+  }
+
+})();
+</script>
+</body>
+</html>
