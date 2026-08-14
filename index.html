@@ -245,10 +245,12 @@
   #filmstrip{
     display:flex; gap:8px; overflow-x:auto; padding:10px 12px;
     background:var(--ink); border-top:3px solid var(--line);
+    touch-action:pan-x; -webkit-overflow-scrolling:touch; overscroll-behavior-x:contain;
   }
   #videoStrip{
     display:flex; gap:8px; overflow-x:auto; padding:0 12px 10px;
     background:var(--ink);
+    touch-action:pan-x; -webkit-overflow-scrolling:touch; overscroll-behavior-x:contain;
   }
   #videoStrip:empty{ display:none; }
   .vthumb{
@@ -284,6 +286,21 @@
     display:flex; align-items:center; justify-content:center;
     font-size:10px; opacity:.4; border-style:dashed;
   }
+  .thumb.selectable{ cursor:pointer; }
+  .thumb.selected{ border-color:var(--marker); box-shadow:0 0 0 2px rgba(255,61,90,.5); }
+  .thumb .selBadge{
+    position:absolute; bottom:2px; right:2px; width:18px; height:18px;
+    background:var(--marker); color:#fff; border-radius:50%;
+    font-size:10px; font-weight:700; display:flex; align-items:center; justify-content:center;
+    border:1px solid var(--paper);
+  }
+  .thumb.dimmed{ opacity:.4; }
+
+  #selectRow{
+    display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+    padding:0 12px 8px;
+  }
+  #selectCount{ font-size:11px; opacity:.7; }
 
   .barbtn{
     flex:1; border:2px solid var(--line); background:var(--panel-2); color:var(--paper);
@@ -410,7 +427,8 @@
   /* onderste actiebalk: horizontaal scrollbare pillen ipv gestapelde rijen */
   #bottomBar{
     display:flex; gap:8px; padding:10px 12px 14px; background:var(--ink);
-    overflow-x:auto;
+    overflow-x:auto; touch-action:pan-x; -webkit-overflow-scrolling:touch;
+    overscroll-behavior-x:contain;
   }
   .pillbtn{
     flex:0 0 auto; border:2px solid var(--line); background:var(--panel-2); color:var(--paper);
@@ -536,6 +554,12 @@
 
     <div id="trayHandle"><div class="bar"></div><span id="trayHandleLabel">Foto's &amp; acties</span></div>
     <div id="trayPanel">
+      <div id="selectRow">
+        <button class="pillbtn" id="selectModeBtn">Selecteren</button>
+        <span id="selectCount" style="display:none;"></span>
+        <button class="pillbtn primary" id="duplicateSelectedBtn" style="display:none;">Dupliceer achteraan</button>
+        <button class="pillbtn" id="cancelSelectBtn" style="display:none;">Annuleer</button>
+      </div>
       <div id="filmstrip"></div>
       <div id="videoStrip"></div>
 
@@ -582,6 +606,7 @@
   <div id="previewModal">
     <button class="pclose" id="previewClose">✕</button>
     <img id="previewImg">
+    <video id="previewVideo" playsinline controls style="display:none; max-width:88%; max-height:60%; border:3px solid var(--paper); border-radius:10px; background:#000;"></video>
     <div class="pctl">
       <button class="iconbtn" id="playPause">⏸</button>
       <span id="fpsLabel">8 fps</span>
@@ -668,6 +693,8 @@
   let facingMode = 'environment';
   let devices = [];
   let frames = []; // {url, blob}
+  let selectMode = false;
+  let selectedIndices = []; // volgorde waarin getikt is, voor dupliceren
   let ghostOn = true;
   let rect = {x:.2, y:.2, w:.6, h:.6}; // fractions of stage
   let dragging = null; // 'move' | 'resize' | null
@@ -834,6 +861,7 @@
     currentProjectCreatedAt = p.createdAt;
     aspect = p.aspect;
     fileFmt = p.fileFmt; fileQual = p.fileQual;
+    exitSelectMode();
     currentFilter = FILTERS.find(f=>f.id===p.filterId) || FILTERS[0];
     portraitOn = !!p.portraitOn;
     brightnessValue = typeof p.brightnessValue === 'number' ? p.brightnessValue : 0;
@@ -916,6 +944,7 @@
     // de projectenlijst geopend, niet via deze knop.
     frames.forEach(f=>{ URL.revokeObjectURL(f.url); if (f._ghostUrl) URL.revokeObjectURL(f._ghostUrl); });
     frames = [];
+    exitSelectMode();
     videoClips.forEach(c=>URL.revokeObjectURL(c.url));
     videoClips = [];
     currentProjectId = null;
@@ -1026,6 +1055,7 @@
       if (f._ghostUrl) URL.revokeObjectURL(f._ghostUrl);
     });
     frames = [];
+    exitSelectMode();
     renderFilmstrip();
     updateGhost();
     if (currentProjectId) saveCurrentProject();
@@ -1798,6 +1828,7 @@
         renderVideoStrip();
         if (currentProjectId) saveCurrentProject();
       };
+      d.onclick = ()=>openVideoPreview(c);
       strip.appendChild(d);
     });
   }
@@ -1832,15 +1863,24 @@
     frames.forEach((f,i)=>{
       const d = document.createElement('div');
       d.className = 'thumb';
-      d.innerHTML = `<img src="${f.url}"><div class="num">${i+1}</div><div class="del">✕</div>`;
-      d.querySelector('.del').onclick = (e)=>{
-        e.stopPropagation();
-        URL.revokeObjectURL(f.url);
-        if (f._ghostUrl) URL.revokeObjectURL(f._ghostUrl);
-        frames.splice(i,1);
-        renderFilmstrip(); updateGhost();
-        if (currentProjectId) saveCurrentProject();
-      };
+      if (selectMode){
+        const selPos = selectedIndices.indexOf(i);
+        d.classList.add('selectable');
+        if (selPos !== -1) d.classList.add('selected');
+        d.innerHTML = `<img src="${f.url}"><div class="num">${i+1}</div>` +
+          (selPos !== -1 ? `<div class="selBadge">${selPos+1}</div>` : '');
+        d.onclick = ()=>toggleSelect(i);
+      } else {
+        d.innerHTML = `<img src="${f.url}"><div class="num">${i+1}</div><div class="del">✕</div>`;
+        d.querySelector('.del').onclick = (e)=>{
+          e.stopPropagation();
+          URL.revokeObjectURL(f.url);
+          if (f._ghostUrl) URL.revokeObjectURL(f._ghostUrl);
+          frames.splice(i,1);
+          renderFilmstrip(); updateGhost();
+          if (currentProjectId) saveCurrentProject();
+        };
+      }
       strip.appendChild(d);
     });
     if (!frames.length){
@@ -1848,24 +1888,85 @@
     }
     $('frameLabel').textContent = frames.length+1;
     updateTopbarSub();
-    strip.scrollLeft = strip.scrollWidth;
+    if (!selectMode) strip.scrollLeft = strip.scrollWidth;
   }
   renderFilmstrip();
   renderProjectsList();
+
+  /* ---------------- MEERDERE FOTO'S SELECTEREN & DUPLICEREN ---------------- */
+  function toggleSelect(i){
+    const pos = selectedIndices.indexOf(i);
+    if (pos === -1) selectedIndices.push(i);
+    else selectedIndices.splice(pos, 1);
+    updateSelectUI();
+    renderFilmstrip();
+  }
+  function updateSelectUI(){
+    const n = selectedIndices.length;
+    $('selectCount').style.display = n ? 'inline' : 'none';
+    $('selectCount').textContent = n ? `${n} geselecteerd` : '';
+    $('duplicateSelectedBtn').style.display = n ? 'inline-block' : 'none';
+  }
+  $('selectModeBtn').onclick = ()=>{
+    selectMode = true;
+    selectedIndices = [];
+    $('selectModeBtn').style.display = 'none';
+    $('cancelSelectBtn').style.display = 'inline-block';
+    updateSelectUI();
+    renderFilmstrip();
+  };
+  $('cancelSelectBtn').onclick = exitSelectMode;
+  function exitSelectMode(){
+    selectMode = false;
+    selectedIndices = [];
+    $('selectModeBtn').style.display = 'inline-block';
+    $('cancelSelectBtn').style.display = 'none';
+    updateSelectUI();
+    renderFilmstrip();
+  }
+  $('duplicateSelectedBtn').onclick = ()=>{
+    if (!selectedIndices.length) return;
+    // dupliceer in exact de volgorde waarin ze werden aangetikt
+    selectedIndices.forEach(i=>{
+      const src = frames[i];
+      frames.push({
+        url: URL.createObjectURL(src.blob),
+        blob: src.blob,
+        guideRect: src.guideRect ? {...src.guideRect} : null
+      });
+    });
+    const n = selectedIndices.length;
+    exitSelectMode();
+    renderFilmstrip();
+    updateGhost();
+    if (currentProjectId) saveCurrentProject();
+    toast(`${n} foto${n===1?'':"'s"} gedupliceerd achteraan`);
+  };
 
   /* ---------------- SAVE / SHARE ---------------- */
   async function fileFor(f, idx){
     const ext = fileFmt === 'image/png' ? 'png' : 'jpg';
     return new File([f.blob], `stopmotion_${String(idx+1).padStart(3,'0')}.${ext}`, {type:fileFmt});
   }
+  function videoFileFor(c, idx){
+    const ext = c.blob.type.includes('mp4') ? 'mp4' : 'webm';
+    return new File([c.blob], `stopmotion_clip${idx+1}.${ext}`, {type:c.blob.type});
+  }
 
   $('saveAllBtn').onclick = async ()=>{
-    if (!frames.length){ toast('Nog geen foto\'s om te bewaren'); return; }
-    const files = await Promise.all(frames.map((f,i)=>fileFor(f,i)));
+    if (!frames.length && !videoClips.length){
+      toast('Nog geen foto\'s of video\'s om te bewaren');
+      return;
+    }
+    const photoFiles = await Promise.all(frames.map((f,i)=>fileFor(f,i)));
+    const videoFiles = videoClips.map((c,i)=>videoFileFor(c,i));
+    const files = [...photoFiles, ...videoFiles];
+    const label = frames.length && videoClips.length ? 'foto\'s en video\'s'
+      : videoClips.length ? 'video\'s' : 'foto\'s';
     if (navigator.canShare && navigator.canShare({files})){
       try{
-        await navigator.share({files, title:'Stopmotion foto\'s'});
-        toast('Deelvenster geopend — kies "Bewaar afbeeldingen"');
+        await navigator.share({files, title:'Stopmotion ' + label});
+        toast('Deelvenster geopend — kies "Bewaar"');
         return;
       }catch(e){ /* user cancelled or failed, fall through to download */ }
     }
@@ -1903,15 +2004,43 @@
   /* ---------------- PREVIEW PLAYER ---------------- */
   let playing = true, playTimer = null, playIdx = 0, fps = 8;
   $('previewBtn').onclick = ()=>{
-    if (!frames.length){ toast('Nog geen foto\'s'); return; }
+    if (!frames.length){
+      if (videoClips.length){
+        openVideoPreview(videoClips[videoClips.length-1]);
+      } else {
+        toast('Nog geen foto\'s of video\'s om te bekijken');
+      }
+      return;
+    }
+    $('previewImg').style.display = 'block';
+    $('previewVideo').style.display = 'none';
+    $('previewVideo').pause();
+    document.querySelector('#previewModal .pctl').style.display = 'flex';
+    $('exportVideoBtn').style.display = 'inline-block';
     $('previewModal').style.display = 'flex';
     playIdx = 0; playing = true;
     $('playPause').textContent = '⏸';
     runPreview();
   };
+  function openVideoPreview(clip){
+    clearTimeout(playTimer);
+    $('previewImg').style.display = 'none';
+    document.querySelector('#previewModal .pctl').style.display = 'none';
+    $('exportVideoBtn').style.display = 'none';
+    $('exportStatus').textContent = '';
+    const v = $('previewVideo');
+    v.style.display = 'block';
+    v.src = clip.url;
+    $('previewModal').style.display = 'flex';
+    v.play().catch(()=>{});
+  }
   $('previewClose').onclick = ()=>{
     $('previewModal').style.display = 'none';
     clearTimeout(playTimer);
+    const v = $('previewVideo');
+    v.pause();
+    v.removeAttribute('src');
+    v.style.display = 'none';
   };
   $('playPause').onclick = ()=>{
     playing = !playing;
