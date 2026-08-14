@@ -1854,15 +1854,8 @@
     const ext = clip.blob.type.includes('mp4') ? 'mp4' : 'webm';
     const fileName = (currentProjectName ? currentProjectName.replace(/[^\w\-]+/g,'_') : 'stopmotion') + `_clip${i+1}.${ext}`;
     const file = new File([clip.blob], fileName, {type: clip.blob.type});
-    if (navigator.canShare && navigator.canShare({files:[file]})){
-      try{
-        await navigator.share({files:[file], title:'Stopmotion video'});
-        toast('Deelvenster geopend — kies "Bewaar video"');
-        return;
-      }catch(e){ /* val terug op download */ }
-    }
-    downloadFile(file);
-    toast('Video gedownload');
+    const shared = await trySaveFile(file, 'Stopmotion video');
+    toast(shared ? 'Deelvenster geopend — kies "Bewaar video"' : 'Video geopend in nieuw tabblad — bewaar hem van daaruit');
   }
 
   $('undoBtn').onclick = ()=>{
@@ -1990,13 +1983,14 @@
         await navigator.share({files, title:'Stopmotion ' + label});
         toast('Deelvenster geopend — kies "Bewaar"');
         return;
-      }catch(e){ /* user cancelled or failed, fall through to download */ }
+      }catch(e){ /* user cancelled or failed, fall through */ }
     }
-    // fallback: trigger sequential downloads
-    files.forEach((file, i)=>{
-      setTimeout(()=>downloadFile(file), i*250);
-    });
-    toast('Downloads gestart — open ze en bewaar handmatig in Foto\'s');
+    // fallback: probeer elk bestand apart te delen/openen (werkt betrouwbaar op iOS)
+    for (const file of files){
+      await trySaveFile(file);
+      await sleep(200);
+    }
+    toast('Bestanden geopend om te bewaren');
   };
 
   // Bewaart elke foto apart, ÉÉN voor ÉÉN, in exact de juiste volgorde —
@@ -2027,11 +2021,37 @@
     toast(`Alle ${total} foto's apart bewaard, in volgorde`);
   };
 
+  // iOS Safari negeert het download-attribuut op <a> en probeert de blob te
+  // NAVIGEREN in plaats van te bewaren — dat geeft de "WebKitBlobResource
+  // fout 1"-melding. Op iOS openen we de blob daarom in een nieuw tabblad
+  // (lange-druk → "Bewaar afbeelding/video"); op andere browsers werkt de
+  // klassieke download-link gewoon.
+  const IS_IOS = /iP(hone|od|ad)/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
   function downloadFile(file){
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(file);
-    a.download = file.name;
-    document.body.appendChild(a); a.click(); a.remove();
+    const url = URL.createObjectURL(file);
+    if (IS_IOS){
+      window.open(url, '_blank');
+    } else {
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = file.name;
+      document.body.appendChild(a); a.click(); a.remove();
+    }
+  }
+
+  // Probeert een bestand te delen (Foto's-app), en valt anders netjes terug
+  // op downloadFile() — gebruikt overal waar we een los bestand willen bewaren.
+  async function trySaveFile(file, shareTitle){
+    if (navigator.canShare && navigator.canShare({files:[file]})){
+      try{
+        await navigator.share({files:[file], title: shareTitle || file.name});
+        return true;
+      }catch(e){ /* geannuleerd/geblokkeerd, val terug op downloadFile */ }
+    }
+    downloadFile(file);
+    return false;
   }
 
   $('zipBtn').onclick = async ()=>{
@@ -2042,11 +2062,9 @@
     frames.forEach((f,i)=>{ zip.file(`stopmotion_${String(i+1).padStart(3,'0')}.${ext}`, f.blob); });
     toast('ZIP wordt gemaakt…');
     const content = await zip.generateAsync({type:'blob'});
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(content);
-    a.download = 'stopmotion.zip';
-    document.body.appendChild(a); a.click(); a.remove();
-    toast('ZIP gedownload');
+    const file = new File([content], 'stopmotion.zip', {type:'application/zip'});
+    const shared = await trySaveFile(file, 'Stopmotion ZIP');
+    toast(shared ? 'Deelvenster geopend' : 'ZIP geopend in nieuw tabblad — bewaar hem van daaruit');
   };
 
   /* individual save via long-press style — tap thumb num area for single share could be added later */
@@ -2215,18 +2233,8 @@
       const file = new File([blob], fileName, {type: outType});
 
       statusEl.textContent = '';
-      if (navigator.canShare && navigator.canShare({files:[file]})){
-        try{
-          await navigator.share({files:[file], title:'Stopmotion video'});
-          toast('Deelvenster geopend — kies "Bewaar video"');
-        }catch(e){
-          downloadFile(file);
-          toast('Video gedownload');
-        }
-      } else {
-        downloadFile(file);
-        toast('Video gedownload');
-      }
+      const shared = await trySaveFile(file, 'Stopmotion video');
+      toast(shared ? 'Deelvenster geopend — kies "Bewaar video"' : 'Video geopend in nieuw tabblad — bewaar hem van daaruit');
     }catch(err){
       console.error(err);
       toast('Video-export mislukt: ' + (err.message||err.name||'onbekende fout'));
