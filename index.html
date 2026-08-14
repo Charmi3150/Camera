@@ -149,8 +149,8 @@
     object-fit:cover; pointer-events:none; display:none;
   }
   #overlayImg{
-    position:absolute; inset:0; width:100%; height:100%;
-    object-fit:contain; pointer-events:none; display:none; z-index:2;
+    position:absolute; object-fit:contain; display:none; z-index:4;
+    pointer-events:auto; touch-action:none; cursor:grab;
   }
   #resizeHandle{
     position:absolute; right:-14px; bottom:-14px; width:30px; height:30px;
@@ -285,10 +285,6 @@
     font-size:10px; opacity:.4; border-style:dashed;
   }
 
-  #bottomBar{
-    display:flex; flex-direction:column; gap:8px; padding:10px 12px 14px; background:var(--ink);
-  }
-  #bottomBar .row{ display:flex; gap:8px; }
   .barbtn{
     flex:1; border:2px solid var(--line); background:var(--panel-2); color:var(--paper);
     border-radius:10px; padding:11px 8px; font-size:11px; font-weight:700;
@@ -297,6 +293,24 @@
   }
   .barbtn.primary{ background:var(--ok); color:var(--ink); border-color:var(--paper); }
   .barbtn.danger{ background:var(--panel-2); color:var(--marker); border-color:var(--marker); }
+
+  /* uitklap-handle: sleep of tik om foto's/actieknoppen te verbergen en het beeld groter te maken */
+  #trayHandle{
+    display:flex; flex-direction:column; align-items:center; gap:4px;
+    padding:8px 0 6px; background:var(--panel); cursor:pointer;
+    touch-action:none; flex:0 0 auto;
+  }
+  #trayHandle .bar{
+    width:40px; height:4px; border-radius:3px; background:rgba(255,255,255,.35);
+  }
+  #trayHandle span{
+    font-size:9px; text-transform:uppercase; letter-spacing:.06em; opacity:.45;
+  }
+  #trayPanel{
+    flex:0 0 auto; overflow:hidden;
+    max-height:400px; transition:max-height .25s ease;
+  }
+  #trayPanel.collapsed{ max-height:0; }
 
   /* preview player modal */
   #previewModal{
@@ -490,9 +504,9 @@
         <div id="frameRect">
           <div id="frameLabel">1</div>
           <img id="ghostImg">
-          <img id="overlayImg">
           <div id="resizeHandle"></div>
         </div>
+        <img id="overlayImg">
       </div>
       <div id="recIndicator" style="display:none;">● <span id="recTimer">00:00</span></div>
       <div class="flash-overlay" id="flashOverlay"></div>
@@ -520,15 +534,18 @@
       <div class="sidebtn" id="previewBtn">▶<span>Preview</span></div>
     </div>
 
-    <div id="filmstrip"></div>
-    <div id="videoStrip"></div>
+    <div id="trayHandle"><div class="bar"></div><span id="trayHandleLabel">Foto's &amp; acties</span></div>
+    <div id="trayPanel">
+      <div id="filmstrip"></div>
+      <div id="videoStrip"></div>
 
-    <div id="bottomBar">
-      <button class="pillbtn primary" id="saveAllBtn">Bewaar alles naar Foto's</button>
-      <button class="pillbtn" id="zipBtn">Download als ZIP</button>
-      <button class="pillbtn" id="saveProjectBtn">Project bewaren</button>
-      <button class="pillbtn danger" id="clearAllBtn">Wis alle foto's</button>
-      <button class="pillbtn danger" id="deleteProjectBtn">Verwijder dit project</button>
+      <div id="bottomBar">
+        <button class="pillbtn primary" id="saveAllBtn">Bewaar alles naar Foto's</button>
+        <button class="pillbtn" id="zipBtn">Download als ZIP</button>
+        <button class="pillbtn" id="saveProjectBtn">Project bewaren</button>
+        <button class="pillbtn danger" id="clearAllBtn">Wis alle foto's</button>
+        <button class="pillbtn danger" id="deleteProjectBtn">Verwijder dit project</button>
+      </div>
     </div>
   </div>
 
@@ -637,6 +654,10 @@
   let overlayBlob = null;    // originele Blob, voor opslag in project
   let overlayEnabled = false;
   let overlayOpacity = 1;    // 0.1 - 1
+  // positie/grootte van de overlay, volledig los van het kadertje —
+  // aan te passen door met de vingers te slepen/knijpen op het scherm
+  let overlayState = { cxFrac:0.5, cyFrac:0.5, scale:1 };
+  const OVERLAY_BASE_WIDTH_FRAC = 0.45; // breedte bij scale=1, als fractie van de stage-breedte
 
   // foto/video modus
   let captureMode = 'foto';  // 'foto' | 'video'
@@ -752,6 +773,7 @@
       brightnessValue,
       overlayBlob: overlayEnabled ? overlayBlob : null,
       overlayOpacity,
+      overlayState: overlayEnabled ? {...overlayState} : null,
       createdAt: currentProjectCreatedAt,
       updatedAt: Date.now(),
       frames: frames.map(f=>({blob:f.blob, guideRect:f.guideRect})),
@@ -836,9 +858,10 @@
       if (p.overlayBlob){
         overlayOpacity = typeof p.overlayOpacity === 'number' ? p.overlayOpacity : 1;
         $('overlayOpacity').value = Math.round(overlayOpacity*100);
-        loadOverlayFile(p.overlayBlob);
+        loadOverlayFile(p.overlayBlob, p.overlayState);
       } else {
         overlayImage = null; overlayBlob = null; overlayEnabled = false;
+        overlayState = { cxFrac:0.5, cyFrac:0.5, scale:1 };
         overlayImg.style.display = 'none';
         $('overlayCtl').style.display = 'none';
         $('overlayBtn').classList.remove('active');
@@ -903,6 +926,7 @@
     brightnessValue = 0;
     if (overlayImg.src) URL.revokeObjectURL(overlayImg.src);
     overlayImage = null; overlayBlob = null; overlayEnabled = false; overlayOpacity = 1;
+    overlayState = { cxFrac:0.5, cyFrac:0.5, scale:1 };
     captureMode = 'foto';
 
     if (aspect.w === 0){
@@ -1206,6 +1230,25 @@
   $('toolsPanelBtn').onclick = ()=>{ $('toolsPanel').style.display = 'flex'; };
   $('toolsPanelClose').onclick = ()=>{ $('toolsPanel').style.display = 'none'; };
 
+  /* ---------------- UITKLAP-HANDLE (foto's & acties verbergen voor groter beeld) ---------------- */
+  let trayOpen = true;
+  function setTrayOpen(open){
+    trayOpen = open;
+    $('trayPanel').classList.toggle('collapsed', !trayOpen);
+    $('trayHandleLabel').textContent = trayOpen ? "Foto's & acties" : "Toon foto's & acties";
+  }
+  const trayHandle = $('trayHandle');
+  let trayDragStartY = null;
+  trayHandle.addEventListener('pointerdown', (e)=>{ trayDragStartY = e.clientY; });
+  trayHandle.addEventListener('pointerup', (e)=>{
+    if (trayDragStartY === null) return;
+    const dy = e.clientY - trayDragStartY;
+    trayDragStartY = null;
+    if (dy > 24) setTrayOpen(false);        // naar beneden slepen = verbergen
+    else if (dy < -24) setTrayOpen(true);   // naar boven slepen = tonen
+    else setTrayOpen(!trayOpen);            // gewone tik = wisselen
+  });
+
   /* ---------------- STIJL / FILTERS ---------------- */
   function totalFilterCss(){
     const parts = [];
@@ -1282,8 +1325,10 @@
   };
 
   /* ---------------- OVERLAY-ILLUSTRATIE ----------------
-     Een PNG (transparante achtergrond) die in het kadertje wordt getoond
-     en mee gebakken wordt in elke foto/video-opname. */
+     Een PNG (transparante achtergrond) die volledig los van het kadertje
+     gepositioneerd/geschaald kan worden — sleep met 1 vinger om te
+     verplaatsen, knijp met 2 vingers om te verkleinen/vergroten — en die
+     mee gebakken wordt in elke foto/video-opname. */
   $('overlayBtn').onclick = ()=>{ $('overlayFileInput').click(); };
   $('overlayFileInput').onchange = (e)=>{
     const file = e.target.files && e.target.files[0];
@@ -1291,7 +1336,7 @@
     loadOverlayFile(file);
     e.target.value = ''; // zelfde bestand later opnieuw kunnen kiezen
   };
-  function loadOverlayFile(file){
+  function loadOverlayFile(file, restoreState){
     const url = URL.createObjectURL(file);
     const img = new Image();
     img.onload = ()=>{
@@ -1299,13 +1344,15 @@
       overlayImage = img;
       overlayBlob = file;
       overlayEnabled = true;
+      overlayState = restoreState ? {...restoreState} : { cxFrac:0.5, cyFrac:0.5, scale:1 };
       overlayImg.src = url;
       overlayImg.style.display = 'block';
       overlayImg.style.opacity = overlayOpacity.toString();
+      renderOverlayTransform();
       $('overlayCtl').style.display = 'flex';
       $('overlayBtn').classList.add('active');
       if (currentProjectId) saveCurrentProject();
-      toast('Overlay geladen');
+      toast('Overlay geladen — sleep om te verplaatsen, knijp om te schalen');
     };
     img.onerror = ()=>{ toast('Kon deze afbeelding niet laden'); };
     img.src = url;
@@ -1320,6 +1367,7 @@
     overlayImage = null;
     overlayBlob = null;
     overlayEnabled = false;
+    overlayState = { cxFrac:0.5, cyFrac:0.5, scale:1 };
     overlayImg.removeAttribute('src');
     overlayImg.style.display = 'none';
     $('overlayCtl').style.display = 'none';
@@ -1327,6 +1375,94 @@
     if (currentProjectId) saveCurrentProject();
     toast('Overlay verwijderd');
   };
+
+  // Berekent de overlay-box in schermpixels (stage-coördinaten) op basis
+  // van overlayState (positie + schaal), los van het kadertje.
+  function overlayBoxPx(){
+    if (!overlayImage) return null;
+    const sw = stage.clientWidth, sh = stage.clientHeight;
+    const imgAR = overlayImage.naturalWidth / overlayImage.naturalHeight;
+    const w = OVERLAY_BASE_WIDTH_FRAC * sw * overlayState.scale;
+    const h = w / imgAR;
+    const left = overlayState.cxFrac*sw - w/2;
+    const top = overlayState.cyFrac*sh - h/2;
+    return { left, top, w, h };
+  }
+  function renderOverlayTransform(){
+    const box = overlayBoxPx();
+    if (!box) return;
+    overlayImg.style.left = box.left + 'px';
+    overlayImg.style.top = box.top + 'px';
+    overlayImg.style.width = box.w + 'px';
+    overlayImg.style.height = box.h + 'px';
+  }
+  window.addEventListener('resize', renderOverlayTransform);
+
+  // Sleep (1 vinger) / knijp (2 vingers) rechtstreeks op de overlay-afbeelding
+  const overlayPointers = new Map(); // pointerId -> {x,y}
+  let overlayGesture = null;
+  overlayImg.addEventListener('pointerdown', (e)=>{
+    overlayPointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+    try{ overlayImg.setPointerCapture(e.pointerId); }catch(err){}
+    overlayImg.style.cursor = 'grabbing';
+    beginOverlayGesture();
+    e.preventDefault();
+  });
+  overlayImg.addEventListener('pointermove', (e)=>{
+    if (!overlayPointers.has(e.pointerId)) return;
+    overlayPointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+    updateOverlayGesture();
+  });
+  function endOverlayPointer(e){
+    if (!overlayPointers.has(e.pointerId)) return;
+    overlayPointers.delete(e.pointerId);
+    if (overlayPointers.size > 0) beginOverlayGesture();
+    else {
+      overlayGesture = null;
+      overlayImg.style.cursor = 'grab';
+      if (currentProjectId) saveCurrentProject();
+    }
+  }
+  overlayImg.addEventListener('pointerup', endOverlayPointer);
+  overlayImg.addEventListener('pointercancel', endOverlayPointer);
+
+  function beginOverlayGesture(){
+    const pts = [...overlayPointers.values()];
+    if (pts.length === 1){
+      overlayGesture = {
+        type:'drag', startX:pts[0].x, startY:pts[0].y,
+        startCx:overlayState.cxFrac, startCy:overlayState.cyFrac
+      };
+    } else if (pts.length >= 2){
+      const dist = Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y);
+      const midX = (pts[0].x+pts[1].x)/2, midY = (pts[0].y+pts[1].y)/2;
+      overlayGesture = {
+        type:'pinch', startDist:dist, startScale:overlayState.scale,
+        startMidX:midX, startMidY:midY,
+        startCx:overlayState.cxFrac, startCy:overlayState.cyFrac
+      };
+    }
+  }
+  function updateOverlayGesture(){
+    if (!overlayGesture) return;
+    const sw = stage.clientWidth, sh = stage.clientHeight;
+    const pts = [...overlayPointers.values()];
+    if (overlayGesture.type === 'drag' && pts.length === 1){
+      const dx = (pts[0].x - overlayGesture.startX)/sw;
+      const dy = (pts[0].y - overlayGesture.startY)/sh;
+      overlayState.cxFrac = clamp(overlayGesture.startCx + dx, 0, 1);
+      overlayState.cyFrac = clamp(overlayGesture.startCy + dy, 0, 1);
+      renderOverlayTransform();
+    } else if (overlayGesture.type === 'pinch' && pts.length >= 2){
+      const dist = Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y);
+      const midX = (pts[0].x+pts[1].x)/2, midY = (pts[0].y+pts[1].y)/2;
+      const ratio = dist / (overlayGesture.startDist || 1);
+      overlayState.scale = clamp(overlayGesture.startScale*ratio, 0.15, 6);
+      overlayState.cxFrac = clamp(overlayGesture.startCx + (midX-overlayGesture.startMidX)/sw, 0, 1);
+      overlayState.cyFrac = clamp(overlayGesture.startCy + (midY-overlayGesture.startMidY)/sh, 0, 1);
+      renderOverlayTransform();
+    }
+  }
 
   // Berekent hoe overlayImage precies past binnen een box met object-fit:contain
   // (zelfde logica als de live preview), zodat de gebakken foto/video er
@@ -1339,8 +1475,8 @@
     return { w, h, offX:(boxW-w)/2, offY:(boxH-h)/2 };
   }
 
-  // Tekent de huidige stijl/helderheid + eventueel de overlay-illustratie
-  // op een canvas-context — herbruikt voor zowel foto's als video-opnames.
+  // Tekent de overlay-illustratie op een canvas-context — herbruikt voor
+  // zowel foto's als video-opnames.
   function drawOverlayOnto(ctx, gx, gy, gw, gh){
     if (!(overlayImage && overlayEnabled && gw > 0 && gh > 0)) return;
     const fit = fitContain(gw, gh, overlayImage.naturalWidth, overlayImage.naturalHeight);
@@ -1391,10 +1527,11 @@
     });
   }
 
-  // Berekent waar het sleepbare frameRect zich bevindt tov de volledige
-  // foto (captureBounds), als fracties 0-1. Dit wordt bij elke foto
-  // opgeslagen zodat de ghost later exact dat stukje kan uitsnijden.
-  function computeGuideRectFraction(){
+  // Rekent een rechthoek in schermpixels (stage-coördinaten) om naar een
+  // fractie (0-1) tov de volledige foto (captureBounds). Herbruikt voor
+  // zowel het kadertje als de overlay-illustratie, die nu volledig los
+  // van elkaar gepositioneerd/geschaald kunnen worden.
+  function stageRectPxToCaptureFraction(leftPx, topPx, wPx, hPx){
     const vw = video.videoWidth, vh = video.videoHeight;
     const sw = stage.clientWidth, sh = stage.clientHeight;
     const videoAR = vw/vh, stageAR = sw/sh;
@@ -1409,17 +1546,33 @@
     const captureLeft = offX + (dispW-cropW)/2;
     const captureTop = offY + (dispH-cropH)/2;
 
-    const rectPx = { x: rect.x*sw, y: rect.y*sh, w: rect.w*sw, h: rect.h*sh };
-    let gx = (rectPx.x - captureLeft)/cropW;
-    let gy = (rectPx.y - captureTop)/cropH;
-    let gw = rectPx.w/cropW;
-    let gh = rectPx.h/cropH;
+    let gx = (leftPx - captureLeft)/cropW;
+    let gy = (topPx - captureTop)/cropH;
+    let gw = wPx/cropW;
+    let gh = hPx/cropH;
 
-    // clamp binnen de foto
     const x2 = clamp(gx+gw, 0, 1), y2 = clamp(gy+gh, 0, 1);
     gx = clamp(gx, 0, 1); gy = clamp(gy, 0, 1);
     gw = Math.max(0, x2-gx); gh = Math.max(0, y2-gy);
     return {x:gx, y:gy, w:gw, h:gh};
+  }
+
+  // Berekent waar het sleepbare frameRect zich bevindt tov de volledige
+  // foto (captureBounds), als fracties 0-1. Dit wordt bij elke foto
+  // opgeslagen zodat de ghost later exact dat stukje kan uitsnijden.
+  function computeGuideRectFraction(){
+    const sw = stage.clientWidth, sh = stage.clientHeight;
+    return stageRectPxToCaptureFraction(rect.x*sw, rect.y*sh, rect.w*sw, rect.h*sh);
+  }
+
+  // Zelfde, maar dan voor de overlay-illustratie — die heeft een eigen
+  // positie/schaal (overlayState), volledig los van het kadertje.
+  function computeOverlayCaptureFraction(){
+    if (!overlayImage) return null;
+    const sw = stage.clientWidth, sh = stage.clientHeight;
+    const box = overlayBoxPx();
+    if (!box) return null;
+    return stageRectPxToCaptureFraction(box.left, box.top, box.w, box.h);
   }
 
   /* ---------------- CAPTURE ---------------- */
@@ -1496,12 +1649,16 @@
       }
     }
 
-    // overlay-illustratie bovenop alles bakken, exact in het kadertje
-    if (overlayImage && overlayEnabled && guideRect.w > 0 && guideRect.h > 0){
-      const octx = finalCanvas === canvas ? ctx : finalCanvas.getContext('2d');
-      const gx = guideRect.x*finalCanvas.width, gy = guideRect.y*finalCanvas.height;
-      const gw = guideRect.w*finalCanvas.width, gh = guideRect.h*finalCanvas.height;
-      drawOverlayOnto(octx, gx, gy, gw, gh);
+    // overlay-illustratie bovenop alles bakken, op haar eigen positie/schaal
+    // (volledig los van het kadertje)
+    if (overlayImage && overlayEnabled){
+      const overlayFrac = computeOverlayCaptureFraction();
+      if (overlayFrac && overlayFrac.w > 0 && overlayFrac.h > 0){
+        const octx = finalCanvas === canvas ? ctx : finalCanvas.getContext('2d');
+        const gx = overlayFrac.x*finalCanvas.width, gy = overlayFrac.y*finalCanvas.height;
+        const gw = overlayFrac.w*finalCanvas.width, gh = overlayFrac.h*finalCanvas.height;
+        drawOverlayOnto(octx, gx, gy, gw, gh);
+      }
     }
 
     finalCanvas.toBlob((blob)=>{
@@ -1528,7 +1685,7 @@
      effect (achtergrondvervaging) hier niet toegepast, enkel bij foto's. */
   let recCanvas = null, recCtx = null, recStream = null, recRecorder = null;
   let recChunks = [], recRaf = null, recStartTime = 0, recTimerInt = null;
-  let recCropGeom = null, recGuideRect = null;
+  let recCropGeom = null, recOverlayFrac = null;
 
   function startRecording(){
     const vw = video.videoWidth, vh = video.videoHeight;
@@ -1545,7 +1702,7 @@
     else { cropW = vw; cropH = vw/targetRatio; }
     const sx = (vw-cropW)/2, sy = (vh-cropH)/2;
     recCropGeom = {sx, sy, cropW, cropH};
-    recGuideRect = computeGuideRectFraction();
+    recOverlayFrac = (overlayImage && overlayEnabled) ? computeOverlayCaptureFraction() : null;
 
     const maxDim = 1440;
     let outW = cropW, outH = cropH;
@@ -1589,9 +1746,9 @@
     recCtx.filter = totalFilterCss();
     recCtx.drawImage(video, sx, sy, cropW, cropH, 0, 0, recCanvas.width, recCanvas.height);
     recCtx.filter = 'none';
-    if (recGuideRect.w > 0 && recGuideRect.h > 0){
-      const gx = recGuideRect.x*recCanvas.width, gy = recGuideRect.y*recCanvas.height;
-      const gw = recGuideRect.w*recCanvas.width, gh = recGuideRect.h*recCanvas.height;
+    if (recOverlayFrac && recOverlayFrac.w > 0 && recOverlayFrac.h > 0){
+      const gx = recOverlayFrac.x*recCanvas.width, gy = recOverlayFrac.y*recCanvas.height;
+      const gw = recOverlayFrac.w*recCanvas.width, gh = recOverlayFrac.h*recCanvas.height;
       drawOverlayOnto(recCtx, gx, gy, gw, gh);
     }
     recRaf = requestAnimationFrame(recDrawLoop);
@@ -1614,7 +1771,7 @@
       renderVideoStrip();
       saveCurrentProject();
       recStream.getTracks().forEach(t=>t.stop());
-      recCanvas = null; recCtx = null; recStream = null; recRecorder = null; recCropGeom = null; recGuideRect = null;
+      recCanvas = null; recCtx = null; recStream = null; recRecorder = null; recCropGeom = null; recOverlayFrac = null;
     };
     recRecorder.onstop = finish;
     recRecorder.stop();
