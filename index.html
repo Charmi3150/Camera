@@ -148,20 +148,31 @@
     position:absolute; inset:0; width:100%; height:100%;
     object-fit:cover; pointer-events:none; display:none;
   }
+  #overlayImg{
+    position:absolute; inset:0; width:100%; height:100%;
+    object-fit:contain; pointer-events:none; display:none; z-index:2;
+  }
   #resizeHandle{
     position:absolute; right:-14px; bottom:-14px; width:30px; height:30px;
     background:var(--marker); border:3px solid var(--paper); border-radius:50%;
-    pointer-events:auto; touch-action:none;
+    pointer-events:auto; touch-action:none; z-index:3;
   }
   #frameLabel{
     position:absolute; top:-26px; left:0; font-size:10px; font-weight:700;
     background:var(--marker); color:var(--ink); padding:3px 7px; border-radius:6px;
-    white-space:nowrap; pointer-events:none;
+    white-space:nowrap; pointer-events:none; z-index:3;
   }
   .flash-overlay{
     position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none;
     transition:opacity .08s ease;
   }
+  #recIndicator{
+    position:absolute; top:14px; left:14px; z-index:10;
+    background:rgba(0,0,0,.6); color:#fff; font-size:12px; font-weight:700;
+    padding:5px 10px; border-radius:8px; display:flex; align-items:center; gap:6px;
+  }
+  #recIndicator{ color:var(--marker); }
+  #recIndicator span{ color:#fff; }
 
   /* controls row above filmstrip */
   #controls{
@@ -189,12 +200,29 @@
     padding:0 14px 10px; background:var(--panel);
   }
   #portraitCtl label{ font-size:10px; opacity:.6; white-space:nowrap; text-transform:uppercase; letter-spacing:.06em; }
+  #overlayCtl{
+    display:flex; align-items:center; gap:8px;
+    padding:0 14px 10px; background:var(--panel);
+  }
+  #overlayCtl label{ font-size:10px; opacity:.6; white-space:nowrap; text-transform:uppercase; letter-spacing:.06em; }
+  #overlayRemoveBtn{ width:30px; height:30px; font-size:13px; flex:0 0 auto; }
   #brightnessCtl{
     display:flex; align-items:center; gap:8px;
     padding:0 14px 10px; background:var(--panel);
   }
   #brightnessCtl label{ font-size:10px; opacity:.6; white-space:nowrap; text-transform:uppercase; letter-spacing:.06em; }
   #brightnessReset{ width:30px; height:30px; font-size:13px; flex:0 0 auto; }
+
+  #modeRow{
+    display:flex; justify-content:center; gap:6px;
+    padding:8px 14px 0; background:var(--panel);
+  }
+  .modeBtn{
+    background:transparent; color:var(--paper); opacity:.5;
+    border:none; padding:6px 16px; font-size:12px; font-weight:700;
+    letter-spacing:.06em; cursor:pointer; border-bottom:3px solid transparent;
+  }
+  .modeBtn.active{ opacity:1; border-bottom-color:var(--marker); }
 
   #shutterRow{
     display:flex; align-items:center; justify-content:center; gap:22px;
@@ -204,9 +232,10 @@
     width:74px; height:74px; border-radius:50%;
     background:var(--marker); border:4px solid var(--paper);
     box-shadow:0 0 0 3px var(--line);
-    cursor:pointer;
+    cursor:pointer; transition:border-radius .15s ease;
   }
   #shutter:active{ background:var(--marker-dim); }
+  #shutter.recording{ border-radius:16px; background:var(--marker); }
   .sidebtn{
     display:flex; flex-direction:column; align-items:center; gap:3px;
     font-size:9px; text-transform:uppercase; letter-spacing:.05em; opacity:.85;
@@ -216,6 +245,24 @@
   #filmstrip{
     display:flex; gap:8px; overflow-x:auto; padding:10px 12px;
     background:var(--ink); border-top:3px solid var(--line);
+  }
+  #videoStrip{
+    display:flex; gap:8px; overflow-x:auto; padding:0 12px 10px;
+    background:var(--ink);
+  }
+  #videoStrip:empty{ display:none; }
+  .vthumb{
+    position:relative; flex:0 0 auto; width:64px; height:56px;
+    border:2px solid var(--accent2); border-radius:8px; overflow:hidden;
+    background:var(--panel-2); display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:2px;
+  }
+  .vthumb .vicon{ font-size:16px; }
+  .vthumb .vlen{ font-size:9px; opacity:.75; }
+  .vthumb .vbtns{ position:absolute; inset:0; display:flex; opacity:0; }
+  .vthumb:active .vbtns{ opacity:1; background:rgba(0,0,0,.6); }
+  .vthumb .vbtns button{
+    flex:1; background:none; border:none; color:#fff; font-size:13px;
   }
   .thumb{
     position:relative; flex:0 0 auto; width:56px; height:56px;
@@ -407,9 +454,11 @@
         <div id="frameRect">
           <div id="frameLabel">1</div>
           <img id="ghostImg">
+          <img id="overlayImg">
           <div id="resizeHandle"></div>
         </div>
       </div>
+      <div id="recIndicator" style="display:none;">● <span id="recTimer">00:00</span></div>
       <div class="flash-overlay" id="flashOverlay"></div>
     </div>
 
@@ -425,15 +474,27 @@
     <div id="toolsRow">
       <button class="toolbtn" id="filterBtn">🎨 Stijl: <b id="filterLabel">Standaard</b></button>
       <button class="toolbtn" id="portraitToggle">🌫️ Portret</button>
+      <button class="toolbtn" id="overlayBtn">🖼️ Overlay</button>
     </div>
+    <input type="file" id="overlayFileInput" accept="image/png,image/*" style="display:none;">
     <div id="portraitCtl" style="display:none;">
       <label>Vervaging achtergrond</label>
       <input type="range" id="portraitBlur" min="4" max="30" value="14">
+    </div>
+    <div id="overlayCtl" style="display:none;">
+      <label>Overlay dekking</label>
+      <input type="range" id="overlayOpacity" min="10" max="100" value="100">
+      <button class="iconbtn" id="overlayRemoveBtn" title="Overlay verwijderen">🗑</button>
     </div>
     <div id="brightnessCtl">
       <label>☀️ Helderheid</label>
       <input type="range" id="brightnessSlider" min="-50" max="50" value="0">
       <button class="iconbtn" id="brightnessReset" title="Reset helderheid">↺</button>
+    </div>
+
+    <div id="modeRow">
+      <button class="modeBtn active" id="modeFotoBtn">FOTO</button>
+      <button class="modeBtn" id="modeVideoBtn">VIDEO</button>
     </div>
 
     <div id="shutterRow">
@@ -443,6 +504,7 @@
     </div>
 
     <div id="filmstrip"></div>
+    <div id="videoStrip"></div>
 
     <div id="bottomBar">
       <div class="row">
@@ -528,6 +590,17 @@
   let currentFilter = FILTERS[0];
   let portraitOn = false;
   let brightnessValue = 0; // -50..50, namaak-belichting (echte EV-controle kan niet via de browser)
+
+  // overlay-illustratie (PNG met transparantie) die mee gebakken wordt in elke opname
+  let overlayImage = null;   // HTMLImageElement
+  let overlayBlob = null;    // originele Blob, voor opslag in project
+  let overlayEnabled = false;
+  let overlayOpacity = 1;    // 0.1 - 1
+
+  // foto/video modus
+  let captureMode = 'foto';  // 'foto' | 'video'
+  let isRecording = false;
+  let videoClips = [];       // {url, blob}
 
   let stream = null, videoTrack = null;
   let facingMode = 'environment';
@@ -636,9 +709,12 @@
       filterId: currentFilter.id,
       portraitOn,
       brightnessValue,
+      overlayBlob: overlayEnabled ? overlayBlob : null,
+      overlayOpacity,
       createdAt: currentProjectCreatedAt,
       updatedAt: Date.now(),
-      frames: frames.map(f=>({blob:f.blob, guideRect:f.guideRect}))
+      frames: frames.map(f=>({blob:f.blob, guideRect:f.guideRect})),
+      videoClips: videoClips.map(c=>({blob:c.blob}))
     };
     dbPut(record).catch(e=>console.error('project opslaan mislukt', e));
   }
@@ -698,7 +774,9 @@
     currentFilter = FILTERS.find(f=>f.id===p.filterId) || FILTERS[0];
     portraitOn = !!p.portraitOn;
     brightnessValue = typeof p.brightnessValue === 'number' ? p.brightnessValue : 0;
+    overlayOpacity = typeof p.overlayOpacity === 'number' ? p.overlayOpacity : 1;
     frames = (p.frames||[]).map(f=>({ blob:f.blob, url:URL.createObjectURL(f.blob), guideRect:f.guideRect }));
+    videoClips = (p.videoClips||[]).map(c=>({ blob:c.blob, url:URL.createObjectURL(c.blob) }));
     facingMode = 'environment';
 
     try{
@@ -714,7 +792,21 @@
       selectFilter(currentFilter.id);
       $('portraitToggle').classList.toggle('active', portraitOn);
       $('portraitCtl').style.display = portraitOn ? 'flex' : 'none';
+      if (p.overlayBlob){
+        overlayOpacity = typeof p.overlayOpacity === 'number' ? p.overlayOpacity : 1;
+        $('overlayOpacity').value = Math.round(overlayOpacity*100);
+        loadOverlayFile(p.overlayBlob);
+      } else {
+        overlayImage = null; overlayBlob = null; overlayEnabled = false;
+        overlayImg.style.display = 'none';
+        $('overlayCtl').style.display = 'none';
+        $('overlayBtn').classList.remove('active');
+      }
+      captureMode = 'foto';
+      $('modeFotoBtn').classList.add('active');
+      $('modeVideoBtn').classList.remove('active');
       renderFilmstrip();
+      renderVideoStrip();
       updateGhost();
       updateTopbarSub();
       toast(`Project "${p.name}" geopend`);
@@ -760,12 +852,17 @@
     // de projectenlijst geopend, niet via deze knop.
     frames.forEach(f=>{ URL.revokeObjectURL(f.url); if (f._ghostUrl) URL.revokeObjectURL(f._ghostUrl); });
     frames = [];
+    videoClips.forEach(c=>URL.revokeObjectURL(c.url));
+    videoClips = [];
     currentProjectId = null;
     currentProjectName = null;
     currentProjectCreatedAt = null;
     currentFilter = FILTERS[0];
     portraitOn = false;
     brightnessValue = 0;
+    if (overlayImg.src) URL.revokeObjectURL(overlayImg.src);
+    overlayImage = null; overlayBlob = null; overlayEnabled = false; overlayOpacity = 1;
+    captureMode = 'foto';
 
     if (aspect.w === 0){
       const cw = parseFloat($('customW').value)||1, ch = parseFloat($('customH').value)||1;
@@ -789,7 +886,13 @@
       selectFilter(currentFilter.id);
       $('portraitToggle').classList.remove('active');
       $('portraitCtl').style.display = 'none';
+      overlayImg.style.display = 'none';
+      $('overlayCtl').style.display = 'none';
+      $('overlayBtn').classList.remove('active');
+      $('modeFotoBtn').classList.add('active');
+      $('modeVideoBtn').classList.remove('active');
       renderFilmstrip();
+      renderVideoStrip();
       updateGhost();
     }catch(err){
       console.error(err);
@@ -885,6 +988,8 @@
       if (f._ghostUrl) URL.revokeObjectURL(f._ghostUrl);
     });
     frames = [];
+    videoClips.forEach(c=>URL.revokeObjectURL(c.url));
+    videoClips = [];
     currentProjectId = null;
     currentProjectName = null;
     currentProjectCreatedAt = null;
@@ -1131,6 +1236,75 @@
     if (currentProjectId) saveCurrentProject();
   };
 
+  /* ---------------- OVERLAY-ILLUSTRATIE ----------------
+     Een PNG (transparante achtergrond) die in het kadertje wordt getoond
+     en mee gebakken wordt in elke foto/video-opname. */
+  $('overlayBtn').onclick = ()=>{ $('overlayFileInput').click(); };
+  $('overlayFileInput').onchange = (e)=>{
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    loadOverlayFile(file);
+    e.target.value = ''; // zelfde bestand later opnieuw kunnen kiezen
+  };
+  function loadOverlayFile(file){
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = ()=>{
+      if (overlayImage && overlayImg.src) URL.revokeObjectURL(overlayImg.src);
+      overlayImage = img;
+      overlayBlob = file;
+      overlayEnabled = true;
+      overlayImg.src = url;
+      overlayImg.style.display = 'block';
+      overlayImg.style.opacity = overlayOpacity.toString();
+      $('overlayCtl').style.display = 'flex';
+      $('overlayBtn').classList.add('active');
+      if (currentProjectId) saveCurrentProject();
+      toast('Overlay geladen');
+    };
+    img.onerror = ()=>{ toast('Kon deze afbeelding niet laden'); };
+    img.src = url;
+  }
+  $('overlayOpacity').oninput = (e)=>{
+    overlayOpacity = parseInt(e.target.value)/100;
+    overlayImg.style.opacity = overlayOpacity.toString();
+  };
+  $('overlayOpacity').addEventListener('change', ()=>{ if (currentProjectId) saveCurrentProject(); });
+  $('overlayRemoveBtn').onclick = ()=>{
+    if (overlayImg.src) URL.revokeObjectURL(overlayImg.src);
+    overlayImage = null;
+    overlayBlob = null;
+    overlayEnabled = false;
+    overlayImg.removeAttribute('src');
+    overlayImg.style.display = 'none';
+    $('overlayCtl').style.display = 'none';
+    $('overlayBtn').classList.remove('active');
+    if (currentProjectId) saveCurrentProject();
+    toast('Overlay verwijderd');
+  };
+
+  // Berekent hoe overlayImage precies past binnen een box met object-fit:contain
+  // (zelfde logica als de live preview), zodat de gebakken foto/video er
+  // identiek uitziet als wat je op je scherm ziet.
+  function fitContain(boxW, boxH, imgW, imgH){
+    const boxRatio = boxW/boxH, imgRatio = imgW/imgH;
+    let w, h;
+    if (imgRatio > boxRatio){ w = boxW; h = boxW/imgRatio; }
+    else { h = boxH; w = boxH*imgRatio; }
+    return { w, h, offX:(boxW-w)/2, offY:(boxH-h)/2 };
+  }
+
+  // Tekent de huidige stijl/helderheid + eventueel de overlay-illustratie
+  // op een canvas-context — herbruikt voor zowel foto's als video-opnames.
+  function drawOverlayOnto(ctx, gx, gy, gw, gh){
+    if (!(overlayImage && overlayEnabled && gw > 0 && gh > 0)) return;
+    const fit = fitContain(gw, gh, overlayImage.naturalWidth, overlayImage.naturalHeight);
+    ctx.save();
+    ctx.globalAlpha = overlayOpacity;
+    ctx.drawImage(overlayImage, gx+fit.offX, gy+fit.offY, fit.w, fit.h);
+    ctx.restore();
+  }
+
   function updateGhost(){
     if (ghostOn && frames.length){
       const last = frames[frames.length-1];
@@ -1204,7 +1378,27 @@
   }
 
   /* ---------------- CAPTURE ---------------- */
-  $('shutter').onclick = capturePhoto;
+  $('shutter').onclick = ()=>{
+    if (captureMode === 'video'){
+      if (isRecording) stopRecording(); else startRecording();
+    } else {
+      capturePhoto();
+    }
+  };
+
+  /* ---------------- FOTO / VIDEO MODUS ---------------- */
+  $('modeFotoBtn').onclick = ()=>{
+    if (isRecording) return;
+    captureMode = 'foto';
+    $('modeFotoBtn').classList.add('active');
+    $('modeVideoBtn').classList.remove('active');
+  };
+  $('modeVideoBtn').onclick = ()=>{
+    captureMode = 'video';
+    $('modeVideoBtn').classList.add('active');
+    $('modeFotoBtn').classList.remove('active');
+  };
+
 
   function capturePhoto(){
     const vw = video.videoWidth, vh = video.videoHeight;
@@ -1257,6 +1451,14 @@
       }
     }
 
+    // overlay-illustratie bovenop alles bakken, exact in het kadertje
+    if (overlayImage && overlayEnabled && guideRect.w > 0 && guideRect.h > 0){
+      const octx = finalCanvas === canvas ? ctx : finalCanvas.getContext('2d');
+      const gx = guideRect.x*finalCanvas.width, gy = guideRect.y*finalCanvas.height;
+      const gw = guideRect.w*finalCanvas.width, gh = guideRect.h*finalCanvas.height;
+      drawOverlayOnto(octx, gx, gy, gw, gh);
+    }
+
     finalCanvas.toBlob((blob)=>{
       const url = URL.createObjectURL(blob);
       frames.push({url, blob, guideRect});
@@ -1272,6 +1474,145 @@
     const f = $('flashOverlay');
     f.style.opacity = '0.85';
     setTimeout(()=>{ f.style.opacity='0'; }, 90);
+  }
+
+  /* ---------------- VIDEO OPNEMEN ----------------
+     Filmt live vanaf de camera, met stijl/helderheid en de overlay-illustratie
+     continu mee gecomponeerd op een canvas en opgenomen via MediaRecorder.
+     Om vlot te blijven draaien tijdens het filmen wordt het namaak-portret-
+     effect (achtergrondvervaging) hier niet toegepast, enkel bij foto's. */
+  let recCanvas = null, recCtx = null, recStream = null, recRecorder = null;
+  let recChunks = [], recRaf = null, recStartTime = 0, recTimerInt = null;
+  let recCropGeom = null, recGuideRect = null;
+
+  function startRecording(){
+    const vw = video.videoWidth, vh = video.videoHeight;
+    if (!vw){ toast('Camera nog niet klaar'); return; }
+    if (!('MediaRecorder' in window) || !HTMLCanvasElement.prototype.captureStream){
+      toast('Filmen wordt niet ondersteund in deze browser');
+      return;
+    }
+
+    const targetRatio = aspect.w / aspect.h;
+    const videoRatio = vw / vh;
+    let cropW, cropH;
+    if (videoRatio > targetRatio){ cropH = vh; cropW = vh*targetRatio; }
+    else { cropW = vw; cropH = vw/targetRatio; }
+    const sx = (vw-cropW)/2, sy = (vh-cropH)/2;
+    recCropGeom = {sx, sy, cropW, cropH};
+    recGuideRect = computeGuideRectFraction();
+
+    const maxDim = 1440;
+    let outW = cropW, outH = cropH;
+    if (Math.max(outW,outH) > maxDim){
+      const scale = maxDim/Math.max(outW,outH);
+      outW = Math.round(outW*scale); outH = Math.round(outH*scale);
+    }
+
+    recCanvas = document.createElement('canvas');
+    recCanvas.width = Math.round(outW);
+    recCanvas.height = Math.round(outH);
+    recCtx = recCanvas.getContext('2d');
+
+    const candidates = ['video/mp4;codecs=avc1','video/mp4','video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'];
+    const mimeType = candidates.find(t => window.MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) || '';
+
+    recStream = recCanvas.captureStream(30);
+    recRecorder = new MediaRecorder(recStream, mimeType ? {mimeType, videoBitsPerSecond:8_000_000} : {videoBitsPerSecond:8_000_000});
+    recChunks = [];
+    recRecorder.ondataavailable = (e)=>{ if (e.data && e.data.size) recChunks.push(e.data); };
+    recRecorder._mimeType = mimeType || 'video/webm';
+
+    recRecorder.start();
+    isRecording = true;
+    $('shutter').classList.add('recording');
+    $('modeVideoBtn').classList.add('active');
+    $('recIndicator').style.display = 'flex';
+    recStartTime = Date.now();
+    recTimerInt = setInterval(()=>{
+      const s = Math.floor((Date.now()-recStartTime)/1000);
+      const mm = String(Math.floor(s/60)).padStart(2,'0'), ss = String(s%60).padStart(2,'0');
+      $('recTimer').textContent = `${mm}:${ss}`;
+    }, 250);
+
+    recDrawLoop();
+  }
+
+  function recDrawLoop(){
+    if (!isRecording || !recCropGeom) return;
+    const {sx, sy, cropW, cropH} = recCropGeom;
+    recCtx.filter = totalFilterCss();
+    recCtx.drawImage(video, sx, sy, cropW, cropH, 0, 0, recCanvas.width, recCanvas.height);
+    recCtx.filter = 'none';
+    if (recGuideRect.w > 0 && recGuideRect.h > 0){
+      const gx = recGuideRect.x*recCanvas.width, gy = recGuideRect.y*recCanvas.height;
+      const gw = recGuideRect.w*recCanvas.width, gh = recGuideRect.h*recCanvas.height;
+      drawOverlayOnto(recCtx, gx, gy, gw, gh);
+    }
+    recRaf = requestAnimationFrame(recDrawLoop);
+  }
+
+  function stopRecording(){
+    if (!isRecording) return;
+    isRecording = false;
+    cancelAnimationFrame(recRaf);
+    clearInterval(recTimerInt);
+    $('shutter').classList.remove('recording');
+    $('recIndicator').style.display = 'none';
+
+    const finish = ()=>{
+      const outType = recRecorder._mimeType;
+      const blob = new Blob(recChunks, {type: outType});
+      const url = URL.createObjectURL(blob);
+      videoClips.push({url, blob});
+      ensureProjectStarted();
+      renderVideoStrip();
+      saveCurrentProject();
+      recStream.getTracks().forEach(t=>t.stop());
+      recCanvas = null; recCtx = null; recStream = null; recRecorder = null; recCropGeom = null; recGuideRect = null;
+    };
+    recRecorder.onstop = finish;
+    recRecorder.stop();
+  }
+
+  function renderVideoStrip(){
+    const strip = $('videoStrip');
+    strip.innerHTML = '';
+    videoClips.forEach((c,i)=>{
+      const d = document.createElement('div');
+      d.className = 'vthumb';
+      d.innerHTML = `
+        <div class="vicon">🎬</div>
+        <div class="vlen">clip ${i+1}</div>
+        <div class="vbtns">
+          <button class="vsave" title="Bewaar naar Foto's">💾</button>
+          <button class="vdel" title="Verwijder">🗑</button>
+        </div>`;
+      d.querySelector('.vsave').onclick = (e)=>{ e.stopPropagation(); saveVideoClip(c, i); };
+      d.querySelector('.vdel').onclick = (e)=>{
+        e.stopPropagation();
+        URL.revokeObjectURL(c.url);
+        videoClips.splice(i,1);
+        renderVideoStrip();
+        if (currentProjectId) saveCurrentProject();
+      };
+      strip.appendChild(d);
+    });
+  }
+
+  async function saveVideoClip(clip, i){
+    const ext = clip.blob.type.includes('mp4') ? 'mp4' : 'webm';
+    const fileName = (currentProjectName ? currentProjectName.replace(/[^\w\-]+/g,'_') : 'stopmotion') + `_clip${i+1}.${ext}`;
+    const file = new File([clip.blob], fileName, {type: clip.blob.type});
+    if (navigator.canShare && navigator.canShare({files:[file]})){
+      try{
+        await navigator.share({files:[file], title:'Stopmotion video'});
+        toast('Deelvenster geopend — kies "Bewaar video"');
+        return;
+      }catch(e){ /* val terug op download */ }
+    }
+    downloadFile(file);
+    toast('Video gedownload');
   }
 
   $('undoBtn').onclick = ()=>{
