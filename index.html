@@ -401,15 +401,18 @@
   }
   .filterChip span{ font-size:10px; opacity:.75; text-align:center; max-width:66px; }
 
-  /* uitklapbaar paneel: stijl, portret, overlay, helderheid, kader-lock */
+  /* uitklapbaar paneel: stijl, portret, overlay, helderheid, kader-lock —
+     lichte backdrop, camera moet zichtbaar blijven (Portret/Overlay live vergelijken) */
   #toolsPanel{
-    position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:56;
+    position:fixed; inset:0; background:rgba(0,0,0,.15); z-index:56;
     display:none; align-items:flex-end; justify-content:center;
+    pointer-events:none;
   }
   #toolsPanel .modalCard{
     width:100%; max-width:560px; background:var(--panel);
     border-top:3px solid var(--line); border-radius:18px 18px 0 0;
-    padding:20px 16px 22px; max-height:85vh; overflow-y:auto;
+    padding:20px 16px 22px; max-height:70vh; overflow-y:auto;
+    pointer-events:auto;
   }
   #toolsPanel .headline{ font-size:16px; margin-bottom:14px; }
   #toolsPanel #toolsRow,
@@ -565,6 +568,7 @@
 
       <div id="bottomBar">
         <button class="pillbtn primary" id="saveAllBtn">Bewaar alles naar Foto's</button>
+        <button class="pillbtn" id="saveOrderedBtn">Apart bewaren, in volgorde</button>
         <button class="pillbtn" id="zipBtn">Download als ZIP</button>
         <button class="pillbtn" id="saveProjectBtn">Project bewaren</button>
         <button class="pillbtn danger" id="clearAllBtn">Wis alle foto's</button>
@@ -897,6 +901,7 @@
       captureMode = 'foto';
       $('modeFotoBtn').classList.add('active');
       $('modeVideoBtn').classList.remove('active');
+      applyModeLayout();
       renderFilmstrip();
       renderVideoStrip();
       updateGhost();
@@ -985,6 +990,7 @@
       $('overlayBtn').classList.remove('active');
       $('modeFotoBtn').classList.add('active');
       $('modeVideoBtn').classList.remove('active');
+      applyModeLayout();
       renderFilmstrip();
       renderVideoStrip();
       updateGhost();
@@ -1615,16 +1621,27 @@
   };
 
   /* ---------------- FOTO / VIDEO MODUS ---------------- */
+  function applyModeLayout(){
+    const isVideo = captureMode === 'video';
+    // Ghost/onion-skin en foto-selectie zijn niet relevant tijdens filmen —
+    // weghalen geeft veel meer ruimte aan het camerabeeld.
+    $('controls').style.display = isVideo ? 'none' : 'flex';
+    $('selectRow').style.display = isVideo ? 'none' : 'flex';
+    $('undoBtn').style.visibility = isVideo ? 'hidden' : 'visible';
+    if (isVideo) setTrayOpen(false);
+  }
   $('modeFotoBtn').onclick = ()=>{
     if (isRecording) return;
     captureMode = 'foto';
     $('modeFotoBtn').classList.add('active');
     $('modeVideoBtn').classList.remove('active');
+    applyModeLayout();
   };
   $('modeVideoBtn').onclick = ()=>{
     captureMode = 'video';
     $('modeVideoBtn').classList.add('active');
     $('modeFotoBtn').classList.remove('active');
+    applyModeLayout();
   };
 
 
@@ -1944,9 +1961,14 @@
   };
 
   /* ---------------- SAVE / SHARE ---------------- */
-  async function fileFor(f, idx){
+  // Geeft elke foto een oplopend tijdstempel (eerste foto = oudste, laatste
+  // = meest recent) zodat Foto's/Camera Roll ze op datum gesorteerd in de
+  // juiste volgorde toont, ook bij een gebundelde share van alle foto's.
+  async function fileFor(f, idx, total){
     const ext = fileFmt === 'image/png' ? 'png' : 'jpg';
-    return new File([f.blob], `stopmotion_${String(idx+1).padStart(3,'0')}.${ext}`, {type:fileFmt});
+    const n = total || frames.length;
+    const lastModified = Date.now() - (n - idx) * 1000;
+    return new File([f.blob], `stopmotion_${String(idx+1).padStart(3,'0')}.${ext}`, {type:fileFmt, lastModified});
   }
   function videoFileFor(c, idx){
     const ext = c.blob.type.includes('mp4') ? 'mp4' : 'webm';
@@ -1958,7 +1980,7 @@
       toast('Nog geen foto\'s of video\'s om te bewaren');
       return;
     }
-    const photoFiles = await Promise.all(frames.map((f,i)=>fileFor(f,i)));
+    const photoFiles = await Promise.all(frames.map((f,i)=>fileFor(f,i,frames.length)));
     const videoFiles = videoClips.map((c,i)=>videoFileFor(c,i));
     const files = [...photoFiles, ...videoFiles];
     const label = frames.length && videoClips.length ? 'foto\'s en video\'s'
@@ -1975,6 +1997,34 @@
       setTimeout(()=>downloadFile(file), i*250);
     });
     toast('Downloads gestart — open ze en bewaar handmatig in Foto\'s');
+  };
+
+  // Bewaart elke foto apart, ÉÉN voor ÉÉN, in exact de juiste volgorde —
+  // elke foto wordt pas bewaard nadat de vorige klaar is, zodat de volgorde
+  // in je Camera Roll altijd klopt van eerste tot laatste. Vraagt wel per
+  // foto een bevestiging in het deelvenster.
+  $('saveOrderedBtn').onclick = async ()=>{
+    if (!frames.length){ toast('Nog geen foto\'s om te bewaren'); return; }
+    const total = frames.length;
+    const btn = $('saveOrderedBtn');
+    btn.disabled = true;
+    for (let i=0; i<total; i++){
+      const file = await fileFor(frames[i], i, total);
+      let shared = false;
+      if (navigator.canShare && navigator.canShare({files:[file]})){
+        try{
+          toast(`Foto ${i+1} van ${total} — bewaar en ga verder`, 3000);
+          await navigator.share({files:[file], title:`Foto ${i+1} van ${total}`});
+          shared = true;
+        }catch(e){ /* geblokkeerd of geannuleerd, val terug op download */ }
+      }
+      if (!shared){
+        downloadFile(file);
+        await sleep(300);
+      }
+    }
+    btn.disabled = false;
+    toast(`Alle ${total} foto's apart bewaard, in volgorde`);
   };
 
   function downloadFile(file){
@@ -2088,7 +2138,13 @@
     $('playPause').textContent = '▶';
 
     try{
-      const first = await loadImage(frames[0].url);
+      // Alle foto's eerst volledig inladen VOOR de opname start — anders moet
+      // elk frame tijdens het filmen nog gedecodeerd worden, wat precies de
+      // hapering/onregelmatige timing veroorzaakte.
+      statusEl.textContent = 'Foto\'s inladen…';
+      const images = await Promise.all(frames.map(f => loadImage(f.url)));
+
+      const first = images[0];
       const maxDim = 1440; // performance/geheugen-cap voor opname
       let w = first.naturalWidth, h = first.naturalHeight;
       if (Math.max(w,h) > maxDim){
@@ -2110,24 +2166,45 @@
       ];
       const mimeType = candidates.find(t => window.MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) || '';
 
-      const captureStream = canvas.captureStream(fps);
-      const recorder = new MediaRecorder(captureStream, mimeType ? {mimeType, videoBitsPerSecond: 8_000_000} : {videoBitsPerSecond: 8_000_000});
+      // captureStream(0) = handmatige modus: er wordt pas een video-frame
+      // vastgelegd op het exacte moment dat we track.requestFrame() aanroepen.
+      // Dat voorkomt dat de automatische sample-timer van captureStream(fps)
+      // uit de pas loopt met onze eigen tekenlus (de oorzaak van de hapering).
+      const captureStream = canvas.captureStream(0);
+      const track = captureStream.getVideoTracks()[0];
+      const canRequestFrame = typeof track.requestFrame === 'function';
+      if (!canRequestFrame){
+        // val terug op automatische sampling als requestFrame niet bestaat
+        captureStream.getVideoTracks().forEach(t=>t.stop());
+      }
+      const stream = canRequestFrame ? captureStream : canvas.captureStream(fps);
+      const streamTrack = stream.getVideoTracks()[0];
+
+      const recorder = new MediaRecorder(stream, mimeType ? {mimeType, videoBitsPerSecond: 8_000_000} : {videoBitsPerSecond: 8_000_000});
       const chunks = [];
       recorder.ondataavailable = (e)=>{ if (e.data && e.data.size) chunks.push(e.data); };
       const stopped = new Promise(resolve=>{ recorder.onstop = resolve; });
 
       recorder.start();
+      if (canRequestFrame) streamTrack.requestFrame();
+
       const frameDelay = 1000/fps;
+      let nextTime = performance.now() + frameDelay;
+      for (let i=1; i<images.length; i++){
+        statusEl.textContent = `Foto ${i+1} van ${images.length}…`;
+        const now = performance.now();
+        if (nextTime > now) await sleep(nextTime - now);
+        ctx.clearRect(0,0,w,h);
+        ctx.drawImage(images[i], 0, 0, w, h);
+        if (canRequestFrame) streamTrack.requestFrame();
+        nextTime += frameDelay;
+      }
+      // laatste frame nog even vasthouden zodat het niet abrupt afkapt
+      const now2 = performance.now();
+      if (nextTime > now2) await sleep(nextTime - now2);
+      if (canRequestFrame) streamTrack.requestFrame();
       await sleep(frameDelay);
 
-      for (let i=1; i<frames.length; i++){
-        statusEl.textContent = `Foto ${i+1} van ${frames.length}…`;
-        const img = await loadImage(frames[i].url);
-        ctx.clearRect(0,0,w,h);
-        ctx.drawImage(img, 0, 0, w, h);
-        await sleep(frameDelay);
-      }
-      await sleep(frameDelay); // laatste frame nog even vasthouden
       recorder.stop();
       await stopped;
 
