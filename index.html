@@ -370,6 +370,42 @@
   }
   .filterChip span{ font-size:10px; opacity:.75; text-align:center; max-width:66px; }
 
+  /* uitklapbaar paneel: stijl, portret, overlay, helderheid, kader-lock */
+  #toolsPanel{
+    position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:56;
+    display:none; align-items:flex-end; justify-content:center;
+  }
+  #toolsPanel .modalCard{
+    width:100%; max-width:560px; background:var(--panel);
+    border-top:3px solid var(--line); border-radius:18px 18px 0 0;
+    padding:20px 16px 22px; max-height:85vh; overflow-y:auto;
+  }
+  #toolsPanel .headline{ font-size:16px; margin-bottom:14px; }
+  #toolsPanel #toolsRow,
+  #toolsPanel #portraitCtl,
+  #toolsPanel #overlayCtl,
+  #toolsPanel #brightnessCtl,
+  #toolsPanel #lockAspectRow{
+    padding:0 0 14px; background:none;
+  }
+  #lockAspectRow{
+    display:flex; align-items:center; justify-content:space-between; gap:8px;
+  }
+  #lockAspectRow label{ font-size:12px; opacity:.75; }
+
+  /* onderste actiebalk: horizontaal scrollbare pillen ipv gestapelde rijen */
+  #bottomBar{
+    display:flex; gap:8px; padding:10px 12px 14px; background:var(--ink);
+    overflow-x:auto;
+  }
+  .pillbtn{
+    flex:0 0 auto; border:2px solid var(--line); background:var(--panel-2); color:var(--paper);
+    border-radius:20px; padding:11px 16px; font-size:11px; font-weight:700;
+    text-transform:uppercase; letter-spacing:.03em; cursor:pointer; white-space:nowrap;
+  }
+  .pillbtn.primary{ background:var(--ok); color:var(--ink); border-color:var(--paper); }
+  .pillbtn.danger{ background:var(--panel-2); color:var(--marker); border-color:var(--marker); }
+
   #toast{
     position:fixed; left:50%; bottom:26px; transform:translateX(-50%) translateY(20px);
     background:var(--paper); color:var(--ink); padding:10px 16px; border-radius:10px;
@@ -468,29 +504,10 @@
         <input type="range" id="ghostOpacity" min="0" max="90" value="45">
       </div>
       <button class="iconbtn" id="ghostToggle" title="Onion skin aan/uit">👻</button>
-      <button class="iconbtn" id="lockAspectBtn" title="Kader vastzetten op ratio / vrij slepen">🔓</button>
+      <button class="iconbtn" id="toolsPanelBtn" title="Stijl, portret, overlay, helderheid">⚙️</button>
     </div>
 
-    <div id="toolsRow">
-      <button class="toolbtn" id="filterBtn">🎨 Stijl: <b id="filterLabel">Standaard</b></button>
-      <button class="toolbtn" id="portraitToggle">🌫️ Portret</button>
-      <button class="toolbtn" id="overlayBtn">🖼️ Overlay</button>
-    </div>
     <input type="file" id="overlayFileInput" accept="image/png,image/*" style="display:none;">
-    <div id="portraitCtl" style="display:none;">
-      <label>Vervaging achtergrond</label>
-      <input type="range" id="portraitBlur" min="4" max="30" value="14">
-    </div>
-    <div id="overlayCtl" style="display:none;">
-      <label>Overlay dekking</label>
-      <input type="range" id="overlayOpacity" min="10" max="100" value="100">
-      <button class="iconbtn" id="overlayRemoveBtn" title="Overlay verwijderen">🗑</button>
-    </div>
-    <div id="brightnessCtl">
-      <label>☀️ Helderheid</label>
-      <input type="range" id="brightnessSlider" min="-50" max="50" value="0">
-      <button class="iconbtn" id="brightnessReset" title="Reset helderheid">↺</button>
-    </div>
 
     <div id="modeRow">
       <button class="modeBtn active" id="modeFotoBtn">FOTO</button>
@@ -507,17 +524,41 @@
     <div id="videoStrip"></div>
 
     <div id="bottomBar">
-      <div class="row">
-        <button class="barbtn primary" id="saveAllBtn">Bewaar alles<br>naar Foto's</button>
-        <button class="barbtn" id="zipBtn">Download<br>als ZIP</button>
+      <button class="pillbtn primary" id="saveAllBtn">Bewaar alles naar Foto's</button>
+      <button class="pillbtn" id="zipBtn">Download als ZIP</button>
+      <button class="pillbtn" id="saveProjectBtn">Project bewaren</button>
+      <button class="pillbtn danger" id="clearAllBtn">Wis alle foto's</button>
+      <button class="pillbtn danger" id="deleteProjectBtn">Verwijder dit project</button>
+    </div>
+  </div>
+
+  <div id="toolsPanel">
+    <div class="modalCard">
+      <div class="headline">Extra instellingen</div>
+      <div id="toolsRow">
+        <button class="toolbtn" id="filterBtn">🎨 Stijl: <b id="filterLabel">Standaard</b></button>
+        <button class="toolbtn" id="portraitToggle">🌫️ Portret</button>
+        <button class="toolbtn" id="overlayBtn">🖼️ Overlay</button>
       </div>
-      <div class="row">
-        <button class="barbtn" id="saveProjectBtn">Project<br>bewaren</button>
-        <button class="barbtn danger" id="clearAllBtn">Wis alle<br>foto's</button>
+      <div id="portraitCtl" style="display:none;">
+        <label>Vervaging achtergrond</label>
+        <input type="range" id="portraitBlur" min="4" max="30" value="14">
       </div>
-      <div class="row">
-        <button class="barbtn danger" id="deleteProjectBtn">Verwijder dit project</button>
+      <div id="overlayCtl" style="display:none;">
+        <label>Overlay dekking</label>
+        <input type="range" id="overlayOpacity" min="10" max="100" value="100">
+        <button class="iconbtn" id="overlayRemoveBtn" title="Overlay verwijderen">🗑</button>
       </div>
+      <div id="brightnessCtl">
+        <label>☀️ Helderheid</label>
+        <input type="range" id="brightnessSlider" min="-50" max="50" value="0">
+        <button class="iconbtn" id="brightnessReset" title="Reset helderheid">↺</button>
+      </div>
+      <div id="lockAspectRow">
+        <label>Kader vastzetten op ratio</label>
+        <button class="iconbtn" id="lockAspectBtn" title="Kader vastzetten op ratio / vrij slepen">🔓</button>
+      </div>
+      <button class="barbtn primary" id="toolsPanelClose" style="width:100%; margin-top:16px;">Sluiten</button>
     </div>
   </div>
 
@@ -1160,6 +1201,10 @@
     btn.classList.toggle('active', lockAspect);
     toast(lockAspect ? `Kader vastgezet op ${aspect.label}` : 'Kader vrij versleepbaar');
   };
+
+  /* ---------------- EXTRA-INSTELLINGEN PANEEL ---------------- */
+  $('toolsPanelBtn').onclick = ()=>{ $('toolsPanel').style.display = 'flex'; };
+  $('toolsPanelClose').onclick = ()=>{ $('toolsPanel').style.display = 'none'; };
 
   /* ---------------- STIJL / FILTERS ---------------- */
   function totalFilterCss(){
