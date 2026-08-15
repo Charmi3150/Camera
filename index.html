@@ -2350,10 +2350,10 @@
   async function saveVideoClipsAll(){
     const files = videoClips.map((c,i)=>videoFileFor(c,i));
     if (!files.length) return;
-    // Altijd 1 bestand per share()-aanroep — zie toelichting bij
-    // saveAsSeparatePhotos() hieronder voor waarom dit de betrouwbare
-    // aanpak is op iOS.
-    openBatchSaveModal(files, {chunkSize: 1, fallbackChunkSize:1, itemLabel:"video's", singularLabel:'video'});
+    // Probeert eerst alles in 1 tik te delen; lukt dat op dit toestel niet
+    // betrouwbaar, dan schakelt de modal zelf over op 1 voor 1 (zie
+    // toelichting bij saveAsSeparatePhotos() hieronder).
+    openBatchSaveModal(files, {chunkSize: files.length, fallbackChunkSize:1, itemLabel:"video's", singularLabel:'video'});
   }
 
   $('choiceCancelBtn').onclick = ()=>{ $('saveChoiceModal').style.display = 'none'; };
@@ -2379,15 +2379,18 @@
   /* -------------------------------------------------------------------
      BELANGRIJKE FIX: waarom foto's niet in de camera rol belandden.
      -------------------------------------------------------------------
-     navigator.canShare({files:[...]}) / navigator.share({files:[...]})
-     met MEERDERE bestanden tegelijk blijkt op sommige iPhones/iOS-versies
-     — zeker wanneer de app als "toegevoegd aan beginscherm" (standalone
-     PWA) draait — gewoon te falen of stilletjes niets te doen. Losse
-     video-export gebruikt altijd maar 1 bestand per share()-aanroep en
-     dat werkt wél betrouwbaar. Daarom bewaren we foto's nu ook altijd
-     ÉÉN PER ÉÉN: elke tik op de knop deelt exact 1 foto, met een verse
-     gebruikers-tik per keer (vereist door iOS). Dat kost bij veel foto's
-     wat meer tikjes, maar is de manier die aantoonbaar werkt. */
+     We proberen ALTIJD eerst om alles in 1 tik te delen (dat is wat je
+     wilt, en werkt op de meeste toestellen prima). Maar navigator.share()
+     met MEERDERE bestanden tegelijk kan op sommige iPhones/iOS-versies —
+     zeker wanneer de app als "toegevoegd aan beginscherm" (standalone PWA)
+     draait — falen of niets doen. De eerdere versie viel dan terug op het
+     los openen van elk bestand in een lus (window.open() per foto), en
+     JUIST DIE LUS bleek zelf onbetrouwbaar: er gebeurde dan echt niets
+     zichtbaars, wat precies het gerapporteerde probleem was. Daarom is de
+     terugval nu zelf ook stapsgewijs: lukt "alles in 1 keer" niet, dan
+     schakelt de modal automatisch over op 1 bestand per tik (net als de
+     video-export die al bewees te werken) — nooit meer een lus die meer
+     dan 1 bestand tegelijk probeert te openen. */
   async function saveAsSeparatePhotos(){
     const source = framesToSave();
     if (!source.length){ toast('Nog geen foto\'s'); return; }
@@ -2405,8 +2408,9 @@
       toast('Kon de foto\'s niet voorbereiden', 3200);
       return;
     }
-    // Altijd 1 foto per share()-aanroep — zie toelichting hierboven.
-    openBatchSaveModal(allFiles, {chunkSize: 1, fallbackChunkSize: 1, itemLabel:"foto's", singularLabel:'foto'});
+    // Eerste tik probeert alles in 1 keer; automatische terugval op 1 voor
+    // 1 als dat op dit toestel niet lukt — zie toelichting hierboven.
+    openBatchSaveModal(allFiles, {chunkSize: allFiles.length, fallbackChunkSize: 1, itemLabel:"foto's", singularLabel:'foto'});
   }
 
   // iOS Safari negeert het download-attribuut op <a> en probeert de blob te
@@ -2503,27 +2507,32 @@
     // Precies 1 share()-aanroep, rechtstreeks vanuit deze tik-handler —
     // essentieel: geen enkele await ervoor, zodat de gebruikersactivatie
     // nog vers is.
+    let shared = false, aborted = false;
     if (safeCanShare({files: chunk})){
       try{
         await navigator.share({files: chunk});
-        st.index = end;
+        shared = true;
       }catch(e){
-        if (e && e.name === 'AbortError'){
-          // gebruiker sloot het deelvenster zelf — dezelfde groep nogmaals aanbieden
-        } else {
-          console.error(e);
-          if (st.chunkSize > st.fallbackChunkSize){
-            // grote groep lukte niet (te veel/te groot) — automatisch
-            // overschakelen op kleinere groepjes en deze groep opnieuw tonen
-            st.chunkSize = st.fallbackChunkSize;
-            toast('In 1 keer delen lukte niet — we proberen het per kleinere groep', 3200);
-          } else {
-            chunk.forEach(downloadFile);
-            st.index = end;
-          }
-        }
+        if (e && e.name === 'AbortError') aborted = true; // gebruiker sloot het deelvenster zelf
+        else console.error(e);
       }
+    }
+    if (shared){
+      st.index = end;
+    } else if (aborted){
+      // dezelfde groep nogmaals aanbieden — niets veranderen
+    } else if (chunk.length > st.fallbackChunkSize){
+      // deze groep (canShare gaf false, of share() faalde) lukte niet —
+      // ALTIJD eerst verkleinen in plaats van rechtstreeks los te openen,
+      // want een lus die meerdere bestanden tegelijk los opent is precies
+      // wat er eerder stil faalde. Dezelfde stap wordt hierna opnieuw
+      // getoond, nu in kleinere/losse porties.
+      st.chunkSize = st.fallbackChunkSize;
+      toast('In 1 keer bewaren lukte niet op dit toestel — we schakelen over op 1 voor 1', 3400);
     } else {
+      // Al op de kleinste (1-bestands-)stap en toch mislukt: enige
+      // overgebleven terugval is downloadFile — en dat gebeurt hier per
+      // definitie met precies 1 bestand, nooit in een lus.
       chunk.forEach(downloadFile);
       st.index = end;
     }
