@@ -535,7 +535,7 @@
   }
   #bottomBar .pillbtn{ flex:1; }
   #dangerBar{
-    display:flex; gap:8px; padding:2px 12px 14px; background:var(--ink);
+    display:flex; gap:8px; padding:2px 12px calc(14px + env(safe-area-inset-bottom, 0px)); background:var(--ink);
   }
   #dangerBar .pillbtn{ flex:1; padding:9px 10px; font-size:10px; opacity:.8; }
   .pillbtn{
@@ -2350,7 +2350,10 @@
   async function saveVideoClipsAll(){
     const files = videoClips.map((c,i)=>videoFileFor(c,i));
     if (!files.length) return;
-    openBatchSaveModal(files, {chunkSize: files.length, fallbackChunkSize:1, itemLabel:"video's", singularLabel:'video'});
+    // Altijd 1 bestand per share()-aanroep — zie toelichting bij
+    // saveAsSeparatePhotos() hieronder voor waarom dit de betrouwbare
+    // aanpak is op iOS.
+    openBatchSaveModal(files, {chunkSize: 1, fallbackChunkSize:1, itemLabel:"video's", singularLabel:'video'});
   }
 
   $('choiceCancelBtn').onclick = ()=>{ $('saveChoiceModal').style.display = 'none'; };
@@ -2374,14 +2377,17 @@
   };
 
   /* -------------------------------------------------------------------
-     BELANGRIJKE FIX: waarom foto's soms niet in de camera rol belandden.
+     BELANGRIJKE FIX: waarom foto's niet in de camera rol belandden.
      -------------------------------------------------------------------
-     De Web Share API (navigator.share) staat maar 1 aanroep toe per
-     ECHTE, VERSE tik van de gebruiker, en canShare()/share() horen geen
-     onverwerkte fouten te gooien. Dit hele pad loopt daarom nu altijd via
-     de zichtbare bewaar-modal hieronder (nooit een "stille" poging vooraf)
-     — zo kan "er gebeurt niets" niet meer voorkomen: elke stap toont ofwel
-     een tik-knop, ofwel een duidelijke foutmelding. */
+     navigator.canShare({files:[...]}) / navigator.share({files:[...]})
+     met MEERDERE bestanden tegelijk blijkt op sommige iPhones/iOS-versies
+     — zeker wanneer de app als "toegevoegd aan beginscherm" (standalone
+     PWA) draait — gewoon te falen of stilletjes niets te doen. Losse
+     video-export gebruikt altijd maar 1 bestand per share()-aanroep en
+     dat werkt wél betrouwbaar. Daarom bewaren we foto's nu ook altijd
+     ÉÉN PER ÉÉN: elke tik op de knop deelt exact 1 foto, met een verse
+     gebruikers-tik per keer (vereist door iOS). Dat kost bij veel foto's
+     wat meer tikjes, maar is de manier die aantoonbaar werkt. */
   async function saveAsSeparatePhotos(){
     const source = framesToSave();
     if (!source.length){ toast('Nog geen foto\'s'); return; }
@@ -2395,11 +2401,12 @@
       toast('Kon de foto\'s niet voorbereiden: ' + (e.message||e.name||'onbekende fout'), 4000);
       return;
     }
-    // Begint met alles in 1 keer proberen te delen (1 tik volstaat meestal,
-    // ook bij tientallen foto's); lukt dat niet, dan schakelt de modal
-    // vanzelf over op groepjes van 8 die je telkens zelf met een tik
-    // bevestigt (nodig omdat elke share()-aanroep een verse tik vereist).
-    openBatchSaveModal(allFiles, {chunkSize: allFiles.length, fallbackChunkSize:8, itemLabel:"foto's", singularLabel:'foto'});
+    if (!allFiles.length){
+      toast('Kon de foto\'s niet voorbereiden', 3200);
+      return;
+    }
+    // Altijd 1 foto per share()-aanroep — zie toelichting hierboven.
+    openBatchSaveModal(allFiles, {chunkSize: 1, fallbackChunkSize: 1, itemLabel:"foto's", singularLabel:'foto'});
   }
 
   // iOS Safari negeert het download-attribuut op <a> en probeert de blob te
@@ -2469,13 +2476,20 @@
     const start = st.index, end = Math.min(st.index+st.chunkSize, st.files.length);
     const n = end-start;
     const isEverything = start===0 && n===st.files.length;
-    $('batchSaveHeadline').textContent = isEverything ? 'Bewaren' : `Nog te bewaren: ${start+1}–${end} van ${st.files.length}`;
-    $('batchSaveLead').textContent = n>1
-      ? `Tik op de knop om ${isEverything ? 'alle ' : ''}${st.itemLabel}${isEverything ? ` (${n})` : ` ${start+1}–${end} van ${st.files.length}`} te bewaren. Kies "Bewaar" in het venster dat opent.`
-      : `Tik op de knop om ${st.singularLabel} ${start+1} van ${st.files.length} te bewaren. Kies "Bewaar" in het venster dat opent.`;
+    if (n===1){
+      // Standaardpad: 1 bestand per stap, elke keer een verse tik.
+      $('batchSaveHeadline').textContent = st.files.length>1 ? `${start+1} van ${st.files.length}` : 'Bewaren';
+      $('batchSaveLead').textContent = st.files.length>1
+        ? `Tik op de knop om ${st.singularLabel} ${start+1} van ${st.files.length} te bewaren. Kies "Bewaar" in het venster dat opent.`
+        : `Tik op de knop om deze ${st.singularLabel} te bewaren. Kies "Bewaar" in het venster dat opent.`;
+      $('batchSaveActionBtn').textContent = start===0 ? `Bewaar deze ${st.singularLabel}` : `Volgende ${st.singularLabel} bewaren`;
+    } else {
+      $('batchSaveHeadline').textContent = isEverything ? 'Bewaren' : `Nog te bewaren: ${start+1}–${end} van ${st.files.length}`;
+      $('batchSaveLead').textContent = `Tik op de knop om ${isEverything ? 'alle ' : ''}${st.itemLabel}${isEverything ? ` (${n})` : ` ${start+1}–${end} van ${st.files.length}`} te bewaren. Kies "Bewaar" in het venster dat opent.`;
+      $('batchSaveActionBtn').textContent = start===0 ? `Bewaar ${n} ${st.itemLabel}` : 'Volgende groep bewaren';
+    }
     $('batchSaveActionBtn').style.display = 'block';
     $('batchSaveActionBtn').disabled = false;
-    $('batchSaveActionBtn').textContent = start===0 ? `Bewaar ${n>1 ? n+' '+st.itemLabel : 'deze '+st.singularLabel}` : 'Volgende groep bewaren';
     $('batchSaveCloseBtn').textContent = 'Annuleren';
   }
   $('batchSaveActionBtn').onclick = async ()=>{
