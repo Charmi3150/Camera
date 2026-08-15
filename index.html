@@ -311,6 +311,13 @@
     background:var(--ink); border-top:3px solid var(--line);
     touch-action:pan-x; -webkit-overflow-scrolling:touch; overscroll-behavior-x:contain;
   }
+  /* geen foto's? Dan neemt de strip geen ruimte in — de compacte hint
+     hieronder toont dat al. */
+  #filmstrip:empty{ display:none; }
+  #trayEmptyHint{
+    display:none; padding:0 16px 14px; font-size:12px; line-height:1.4;
+    opacity:.6; text-align:center;
+  }
   #videoStrip{
     display:flex; gap:8px; overflow-x:auto; padding:0 12px 10px;
     background:var(--ink);
@@ -345,10 +352,6 @@
     background:var(--marker); color:#fff; border-radius:50%;
     font-size:10px; display:flex; align-items:center; justify-content:center;
     line-height:1;
-  }
-  .thumb.empty{
-    display:flex; align-items:center; justify-content:center;
-    font-size:10px; opacity:.4; border-style:dashed;
   }
   .thumb.selectable{ cursor:pointer; }
   .thumb.selected{ border-color:var(--marker); box-shadow:0 0 0 2px rgba(255,61,90,.5); }
@@ -701,6 +704,7 @@
         <button class="pillbtn primary" id="duplicateSelectedBtn" style="display:none;">Dupliceer achteraan</button>
         <button class="pillbtn" id="cancelSelectBtn" style="display:none;">Klaar</button>
       </div>
+      <div id="trayEmptyHint">Nog geen foto's of video — gebruik de rode knop hierboven om te beginnen.</div>
       <div id="filmstrip"></div>
       <div id="videoStrip"></div>
 
@@ -2139,6 +2143,7 @@
       d.onclick = ()=>openVideoPreview(c);
       strip.appendChild(d);
     });
+    updateTrayEmptyState();
   }
 
   async function saveVideoClip(clip, i){
@@ -2184,12 +2189,25 @@
       }
       strip.appendChild(d);
     });
-    if (!frames.length){
-      strip.innerHTML = '<div class="thumb empty">geen<br>foto\'s</div>';
-    }
     $('frameLabel').textContent = frames.length+1;
     updateTopbarSub();
     if (!selectMode) strip.scrollLeft = strip.scrollWidth;
+    updateTrayEmptyState();
+  }
+
+  /* ---------------- LEGE STAAT: acties/knoppen die niets kunnen doen
+     (nog geen foto's/video's) helemaal weglaten i.p.v. ze te tonen —
+     dat scheelt ruimte en verwarring. Zodra er iets is, komen ze terug. */
+  function updateTrayEmptyState(){
+    const hasFrames = frames.length > 0;
+    const hasClips = videoClips.length > 0;
+    const hasAny = hasFrames || hasClips;
+    $('trayEmptyHint').style.display = hasAny ? 'none' : 'block';
+    $('selectRow').style.display = hasFrames ? 'flex' : 'none';
+    $('bottomBar').style.display = hasAny ? 'flex' : 'none';
+    $('clearAllBtn').style.display = hasFrames ? '' : 'none';
+    $('deleteProjectBtn').style.display = currentProjectId ? '' : 'none';
+    $('dangerBar').style.display = (hasFrames || currentProjectId) ? 'flex' : 'none';
   }
   renderFilmstrip();
   renderProjectsList();
