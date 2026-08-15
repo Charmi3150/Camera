@@ -164,11 +164,31 @@
     position:absolute; object-fit:contain; display:none; z-index:4;
     pointer-events:auto; touch-action:none; cursor:grab;
   }
-  #resizeHandle{
-    position:absolute; right:-14px; bottom:-14px; width:30px; height:30px;
+  /* 8 grijpbare handvatten rond het kader: 4 hoeken + 4 zijden, zodat het
+     kader vanuit elke kant of hoek versleept/aangepast kan worden. Elk
+     handvat heeft een ruime onzichtbare "hitbox" (::after) zodat ze ook
+     met een vinger makkelijk te raken zijn, zonder dat het kader er visueel
+     onoverzichtelijk door wordt. */
+  .rHandle{
+    position:absolute; width:26px; height:26px;
     background:var(--marker); border:3px solid var(--paper); border-radius:50%;
     pointer-events:auto; touch-action:none; z-index:3;
   }
+  .rHandle::after{
+    content:''; position:absolute; inset:-14px; /* grotere onzichtbare tikzone */
+  }
+  .rHandle[data-h="nw"]{ left:-13px;  top:-13px; }
+  .rHandle[data-h="n"] { left:50%; top:-13px; margin-left:-13px; }
+  .rHandle[data-h="ne"]{ right:-13px; top:-13px; }
+  .rHandle[data-h="e"] { right:-13px; top:50%; margin-top:-13px; }
+  .rHandle[data-h="se"]{ right:-13px; bottom:-13px; }
+  .rHandle[data-h="s"] { left:50%; bottom:-13px; margin-left:-13px; }
+  .rHandle[data-h="sw"]{ left:-13px; bottom:-13px; }
+  .rHandle[data-h="w"] { left:-13px; top:50%; margin-top:-13px; }
+  .rHandle[data-h="n"], .rHandle[data-h="s"]{ cursor:ns-resize; }
+  .rHandle[data-h="e"], .rHandle[data-h="w"]{ cursor:ew-resize; }
+  .rHandle[data-h="nw"], .rHandle[data-h="se"]{ cursor:nwse-resize; }
+  .rHandle[data-h="ne"], .rHandle[data-h="sw"]{ cursor:nesw-resize; }
   #frameLabel{
     position:absolute; top:-26px; left:0; font-size:10px; font-weight:700;
     background:var(--marker); color:var(--ink); padding:3px 7px; border-radius:6px;
@@ -252,6 +272,28 @@
     display:flex; flex-direction:column; align-items:center; gap:3px;
     font-size:9px; text-transform:uppercase; letter-spacing:.05em; opacity:.85;
   }
+
+  /* ---------- VOLLEDIG SCHERM (knoppen inklappen tijdens filmen/fotograferen) ----------
+     Alle vaste balken behalve de sluiterknop-rij worden verborgen, en de
+     sluiterknop-rij zelf wordt een transparante overlay bovenop het beeld,
+     zodat het camerabeeld het volledige scherm gebruikt. */
+  #app.fs-active #topbar,
+  #app.fs-active #controls,
+  #app.fs-active #modeRow,
+  #app.fs-active #trayHandle,
+  #app.fs-active #trayPanel{ display:none !important; }
+  #app.fs-active #shutterRow{
+    position:absolute; left:0; right:0; bottom:0; z-index:15;
+    background:linear-gradient(to top, rgba(12,12,13,.75), rgba(12,12,13,0));
+    border-top:none; padding-bottom:calc(18px + env(safe-area-inset-bottom, 0px));
+  }
+  #exitFsBtn{
+    display:none; position:absolute; top:14px; right:14px; z-index:16;
+    background:rgba(0,0,0,.5); color:#fff; border:2px solid rgba(255,255,255,.7);
+    border-radius:20px; padding:8px 14px; font-size:11px; font-weight:700;
+    text-transform:uppercase; letter-spacing:.03em; align-items:center; gap:6px;
+  }
+  #app.fs-active #exitFsBtn{ display:flex; }
 
   /* filmstrip */
   #filmstrip{
@@ -354,7 +396,7 @@
     color:#fff; font-size:16px;
   }
   #fpsLabel{ font-size:12px; opacity:.7; min-width:70px; text-align:center;}
-  #exportVideoBtn{
+  #exportVideoBtn, #exportSaveBtn{
     flex:0 0 auto; width:auto; min-width:200px;
     flex-direction:row; gap:8px;
     padding:13px 22px; margin-top:22px;
@@ -363,9 +405,24 @@
     border:2px solid var(--accent2);
     box-shadow:0 4px 0 rgba(0,0,0,.4);
   }
-  #exportVideoBtn:active{ transform:translateY(2px); box-shadow:0 2px 0 rgba(0,0,0,.4); }
-  #exportVideoBtn:disabled{ opacity:.55; cursor:default; transform:none; box-shadow:none; }
+  #exportSaveBtn{ background:var(--ok); color:var(--ink); border-color:var(--paper); }
+  #exportVideoBtn:active, #exportSaveBtn:active{ transform:translateY(2px); box-shadow:0 2px 0 rgba(0,0,0,.4); }
+  #exportVideoBtn:disabled, #exportSaveBtn:disabled{ opacity:.55; cursor:default; transform:none; box-shadow:none; }
   #exportStatus{ flex:0 0 auto; }
+
+  /* interactieve bewaar-modal (foto's/video's per groep, telkens met een
+     echte tik — vereist door iOS/Android voor elke share()-aanroep) */
+  #batchSaveModal{
+    position:fixed; inset:0; background:rgba(0,0,0,.75); z-index:58;
+    display:none; align-items:flex-end; justify-content:center;
+  }
+  #batchSaveModal .modalCard{
+    width:100%; max-width:560px; background:var(--panel);
+    border-top:3px solid var(--line); border-radius:18px 18px 0 0;
+    padding:20px 16px 22px;
+  }
+  #batchSaveModal .headline{ font-size:16px; margin-bottom:4px; }
+  #batchSaveModal .lead{ font-size:12px; opacity:.7; margin:0 0 18px; line-height:1.5; }
 
   /* aspect-change modal */
   #aspectModal{
@@ -507,10 +564,11 @@
       <div class="sub" id="topbarSub" style="cursor:pointer; text-decoration:underline dotted; text-underline-offset:2px;">kader instellen</div>
     </div>
     <div style="display:flex; gap:6px;">
-      <button class="iconbtn" id="homeBtn" title="Terug naar start">🏠</button>
-      <button class="iconbtn" id="switchCamBtn" title="Camera wisselen">⟲</button>
-      <button class="iconbtn" id="torchBtn" title="Zaklamp">💡</button>
-      <button class="iconbtn" id="helpBtn" title="Hulp">❓</button>
+      <button class="iconbtn" id="homeBtn" title="Terug naar start" aria-label="Terug naar start">🏠</button>
+      <button class="iconbtn" id="switchCamBtn" title="Camera wisselen" aria-label="Camera wisselen">⟲</button>
+      <button class="iconbtn" id="torchBtn" title="Zaklamp" aria-label="Zaklamp">💡</button>
+      <button class="iconbtn" id="fullscreenBtn" title="Volledig scherm — knoppen verbergen" aria-label="Volledig scherm">⛶</button>
+      <button class="iconbtn" id="helpBtn" title="Hulp" aria-label="Hulp">❓</button>
     </div>
   </div>
 
@@ -567,12 +625,20 @@
         <div id="frameRect">
           <div id="frameLabel">1</div>
           <img id="ghostImg">
-          <div id="resizeHandle"></div>
+          <div class="rHandle" data-h="nw"></div>
+          <div class="rHandle" data-h="n"></div>
+          <div class="rHandle" data-h="ne"></div>
+          <div class="rHandle" data-h="e"></div>
+          <div class="rHandle" data-h="se"></div>
+          <div class="rHandle" data-h="s"></div>
+          <div class="rHandle" data-h="sw"></div>
+          <div class="rHandle" data-h="w"></div>
         </div>
         <img id="overlayImg">
       </div>
       <div id="recIndicator" style="display:none;">● <span id="recTimer">00:00</span></div>
       <div class="flash-overlay" id="flashOverlay"></div>
+      <button id="exitFsBtn" title="Toon knoppen" aria-label="Toon knoppen">✕ <span>Toon knoppen</span></button>
     </div>
 
     <div id="controls">
@@ -580,8 +646,8 @@
         <label>Ghost</label>
         <input type="range" id="ghostOpacity" min="0" max="90" value="45">
       </div>
-      <button class="iconbtn" id="ghostToggle" title="Onion skin aan/uit">👻</button>
-      <button class="iconbtn" id="toolsPanelBtn" title="Stijl, portret, overlay, helderheid">⚙️</button>
+      <button class="iconbtn" id="ghostToggle" title="Onion skin aan/uit" aria-label="Onion skin aan/uit">👻</button>
+      <button class="iconbtn" id="toolsPanelBtn" title="Stijl, portret, overlay, helderheid" aria-label="Extra instellingen">⚙️</button>
     </div>
 
     <input type="file" id="overlayFileInput" accept="image/png,image/*" style="display:none;">
@@ -634,16 +700,16 @@
       <div id="overlayCtl" style="display:none;">
         <label>Overlay dekking</label>
         <input type="range" id="overlayOpacity" min="10" max="100" value="100">
-        <button class="iconbtn" id="overlayRemoveBtn" title="Overlay verwijderen">🗑</button>
+        <button class="iconbtn" id="overlayRemoveBtn" title="Overlay verwijderen" aria-label="Overlay verwijderen">🗑</button>
       </div>
       <div id="brightnessCtl">
         <label>☀️ Helderheid</label>
         <input type="range" id="brightnessSlider" min="-50" max="50" value="0">
-        <button class="iconbtn" id="brightnessReset" title="Reset helderheid">↺</button>
+        <button class="iconbtn" id="brightnessReset" title="Reset helderheid" aria-label="Reset helderheid">↺</button>
       </div>
       <div id="lockAspectRow">
         <label>Kader vastzetten op ratio</label>
-        <button class="iconbtn" id="lockAspectBtn" title="Kader vastzetten op ratio / vrij slepen">🔓</button>
+        <button class="iconbtn" id="lockAspectBtn" title="Kader vastzetten op ratio / vrij slepen" aria-label="Kader vastzetten op ratio">🔓</button>
       </div>
       <button class="barbtn primary" id="toolsPanelClose" style="width:100%; margin-top:16px;">Sluiten</button>
     </div>
@@ -659,7 +725,17 @@
       <input type="range" id="fpsSlider" min="2" max="20" value="8" style="width:120px;">
     </div>
     <button class="barbtn" id="exportVideoBtn">🎬 Exporteer als video</button>
+    <button class="barbtn" id="exportSaveBtn" style="display:none;">💾 Bewaar in Foto's</button>
     <p id="exportStatus" style="font-size:11px; opacity:.6; margin-top:8px; text-align:center; max-width:80%;"></p>
+  </div>
+
+  <div id="batchSaveModal">
+    <div class="modalCard">
+      <div class="headline" id="batchSaveHeadline">Bewaren</div>
+      <p class="lead" id="batchSaveLead"></p>
+      <button class="barbtn primary" id="batchSaveActionBtn" style="width:100%; margin-bottom:10px;"></button>
+      <button class="barbtn" id="batchSaveCloseBtn" style="width:100%;">Annuleren</button>
+    </div>
   </div>
 
   <div id="aspectModal">
@@ -945,6 +1021,7 @@
       setup.style.display = 'none';
       errScreen.style.display = 'none';
       camScreen.style.display = 'flex';
+      setFullscreenMode(false);
       initRectForAspect();
       renderFrameRect();
       checkTorch();
@@ -1060,6 +1137,7 @@
       renderFilmstrip();
       renderVideoStrip();
       updateGhost();
+      setFullscreenMode(false);
     }catch(err){
       console.error(err);
       setup.style.display = 'none';
@@ -1071,6 +1149,7 @@
   /* ---------------- HOME ---------------- */
   $('homeBtn').onclick = ()=>{
     if (stream){ stream.getTracks().forEach(t=>t.stop()); stream = null; }
+    setFullscreenMode(false);
     camScreen.style.display = 'none';
     errScreen.style.display = 'none';
     setup.style.display = 'block';
@@ -1279,16 +1358,83 @@
     return {x:t.clientX, y:t.clientY};
   }
 
+  // Welke zijden een handvat beweegt. Hiermee wordt hetzelfde reken-pad
+  // hergebruikt voor hoeken (2 zijden tegelijk) en zijden (1 zijde) —
+  // inclusief een "anker" (het punt dat vast blijft staan tijdens het
+  // slepen), zodat het kader vanuit elke hoek én elke zijde aanpasbaar is.
+  const HANDLE_DEFS = {
+    nw:{left:true,  right:false, top:true,  bottom:false},
+    n: {left:false, right:false, top:true,  bottom:false},
+    ne:{left:false, right:true,  top:true,  bottom:false},
+    e: {left:false, right:true,  top:false, bottom:false},
+    se:{left:false, right:true,  top:false, bottom:true },
+    s: {left:false, right:false, top:false, bottom:true },
+    sw:{left:true,  right:false, top:false, bottom:true },
+    w: {left:true,  right:false, top:false, bottom:false}
+  };
+  const MIN_RECT = 0.08;
+  let activeHandle = null;
+
+  function resizeRect(handleKey, dxFrac, dyFrac, base){
+    const def = HANDLE_DEFS[handleKey];
+    const sw = stage.clientWidth, sh = stage.clientHeight;
+    const {x, y, w, h} = base;
+    // ankerpunt = het punt aan de kant tegenover het handvat, dat blijft
+    // altijd exact staan, ongeacht welke hoek/zijde je versleept
+    const ax = def.left ? x+w : (def.right ? x : x + w/2);
+    const ay = def.top  ? y+h : (def.bottom ? y : y + h/2);
+
+    let w2, h2;
+    if (lockAspect){
+      const ratio = aspect.w/aspect.h;
+      if (def.left || def.right){
+        const rawW = def.right ? (w+dxFrac) : (w-dxFrac);
+        w2 = Math.max(MIN_RECT, rawW);
+        w2 = def.right ? clamp(w2, MIN_RECT, 1-ax) : clamp(w2, MIN_RECT, ax);
+        h2 = w2 * (sw/sh) / ratio;
+      } else {
+        const rawH = def.bottom ? (h+dyFrac) : (h-dyFrac);
+        h2 = Math.max(MIN_RECT, rawH);
+        h2 = def.bottom ? clamp(h2, MIN_RECT, 1-ay) : clamp(h2, MIN_RECT, ay);
+        w2 = h2 * ratio * (sh/sw);
+      }
+      // check of de afgeleide andere zijde nog binnen het scherm past;
+      // zo niet, schaal beide terug zodat de verhouding behouden blijft
+      const availW = def.left ? ax : (def.right ? (1-ax) : Math.min(ax, 1-ax));
+      const availH = def.top ? ay : (def.bottom ? (1-ay) : Math.min(ay, 1-ay));
+      if (w2 > availW){ w2 = availW; h2 = w2*(sw/sh)/ratio; }
+      if (h2 > availH){ h2 = availH; w2 = h2*ratio*(sh/sw); }
+      w2 = Math.max(MIN_RECT*0.3, w2);
+      h2 = Math.max(MIN_RECT*0.3, h2);
+    } else {
+      if (def.left) w2 = clamp(w - dxFrac, MIN_RECT, x+w);
+      else if (def.right) w2 = clamp(w + dxFrac, MIN_RECT, 1-x);
+      else w2 = w;
+      if (def.top) h2 = clamp(h - dyFrac, MIN_RECT, y+h);
+      else if (def.bottom) h2 = clamp(h + dyFrac, MIN_RECT, 1-y);
+      else h2 = h;
+    }
+
+    let x2 = def.left ? (ax - w2) : (def.right ? ax : (ax - w2/2));
+    let y2 = def.top ? (ay - h2) : (def.bottom ? ay : (ay - h2/2));
+    x2 = clamp(x2, 0, 1-w2);
+    y2 = clamp(y2, 0, 1-h2);
+    return {x:x2, y:y2, w:w2, h:h2};
+  }
+
   frameRect.addEventListener('pointerdown', (e)=>{
-    if (e.target.id === 'resizeHandle') return;
+    if (e.target.closest('.rHandle')) return;
     dragging = 'move';
     dragStart = {p:pt(e), rect:{...rect}};
     e.preventDefault();
   });
-  $('resizeHandle').addEventListener('pointerdown', (e)=>{
-    dragging = 'resize';
-    dragStart = {p:pt(e), rect:{...rect}};
-    e.stopPropagation(); e.preventDefault();
+  frameRect.querySelectorAll('.rHandle').forEach(handle=>{
+    handle.addEventListener('pointerdown', (e)=>{
+      dragging = 'resize';
+      activeHandle = handle.dataset.h;
+      dragStart = {p:pt(e), rect:{...rect}};
+      e.stopPropagation(); e.preventDefault();
+    });
   });
   window.addEventListener('pointermove', (e)=>{
     if (!dragging) return;
@@ -1298,20 +1444,12 @@
     if (dragging === 'move'){
       rect.x = clamp(dragStart.rect.x + dx, 0, 1-rect.w);
       rect.y = clamp(dragStart.rect.y + dy, 0, 1-rect.h);
-    } else if (lockAspect){
-      const ratio = aspect.w/aspect.h;
-      let newW = clamp(dragStart.rect.w + dx, 0.12, 1-dragStart.rect.x);
-      let newH = newW * (sw/sh) / ratio;
-      if (dragStart.rect.y + newH > 1){ newH = 1-dragStart.rect.y; newW = newH * (sh/sw) * ratio; }
-      rect.w = newW; rect.h = newH;
-    } else {
-      // vrij resizen: breedte en hoogte volledig onafhankelijk van elkaar
-      rect.w = clamp(dragStart.rect.w + dx, 0.08, 1-dragStart.rect.x);
-      rect.h = clamp(dragStart.rect.h + dy, 0.08, 1-dragStart.rect.y);
+    } else if (dragging === 'resize' && activeHandle){
+      rect = resizeRect(activeHandle, dx, dy, dragStart.rect);
     }
     renderFrameRect();
   }, {passive:true});
-  window.addEventListener('pointerup', ()=>{ dragging=null; });
+  window.addEventListener('pointerup', ()=>{ dragging=null; activeHandle=null; });
   function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
 
   /* ---------------- GHOST / ONION SKIN ---------------- */
@@ -1336,6 +1474,28 @@
   /* ---------------- EXTRA-INSTELLINGEN PANEEL ---------------- */
   $('toolsPanelBtn').onclick = ()=>{ $('toolsPanel').style.display = 'flex'; };
   $('toolsPanelClose').onclick = ()=>{ $('toolsPanel').style.display = 'none'; };
+
+  /* ---------------- VOLLEDIG SCHERM (knoppen inklappen tijdens filmen/fotograferen) ----------------
+     Verbergt topbalk, extra-instellingen-rij, FOTO/VIDEO-tabs en het
+     onderste paneel met foto's & acties, zodat het camerabeeld het hele
+     scherm gebruikt. De sluiterknop blijft altijd bereikbaar als
+     doorschijnende balk bovenop het beeld. */
+  let fullscreenMode = false;
+  function setFullscreenMode(on){
+    fullscreenMode = on;
+    document.getElementById('app').classList.toggle('fs-active', on);
+    $('fullscreenBtn').classList.toggle('active', on);
+    $('fullscreenBtn').textContent = on ? '⤡' : '⛶';
+    // stage-afmetingen veranderen zodra de balken verdwijnen/verschijnen —
+    // kadertje, overlay en foto-grens opnieuw berekenen na de layout-reflow
+    requestAnimationFrame(()=>{
+      renderFrameRect();
+      renderOverlayTransform();
+    });
+    if (on) toast('Knoppen verborgen — tik "Toon knoppen" om terug te keren', 2600);
+  }
+  $('fullscreenBtn').onclick = ()=> setFullscreenMode(!fullscreenMode);
+  $('exitFsBtn').onclick = ()=> setFullscreenMode(false);
 
   /* ---------------- UITKLAP-HANDLE (foto's & acties verbergen voor groter beeld) ---------------- */
   let trayOpen = true;
@@ -1983,9 +2143,10 @@
   /* ---------------- ONBOARDING (welkomstuitleg) ---------------- */
   const OB_STEPS = [
     { icon:'👋', title:'Welkom bij Stikker', text:'Maak een stopmotion-animatie: fotografeer je onderwerp keer op keer terwijl het telkens een klein beetje beweegt.' },
-    { icon:'🟥', title:'Het rode kadertje', text:'Dat is enkel een positioneer-gids, zodat je sticker of onderwerp steeds op dezelfde plek staat. De foto zelf is altijd het volledige beeld.' },
+    { icon:'🟥', title:'Het rode kadertje', text:'Dat is een positioneer-gids, zodat je sticker of onderwerp steeds op dezelfde plek staat. Sleep de rode bolletjes op de hoeken of zijden om het kader te verplaatsen of aan te passen — de foto zelf is altijd het volledige beeld.' },
     { icon:'⚙️', title:'Extra opties', text:'Stijl, portret-effect, een eigen overlay-illustratie en helderheid vind je allemaal achter het tandwiel-icoon.' },
-    { icon:'💾', title:'Bewaar je werk', text:'Onderaan bewaar je alles naar je Foto\'s-app — als losse foto\'s of als samengevoegde video. Elk project wordt automatisch bewaard, dus je kan altijd later verdergaan.' },
+    { icon:'⛶', title:'Volledig scherm', text:'Tik bovenaan op het scherm-icoon om alle knoppen te verbergen en je onderwerp op het volledige scherm te zien tijdens het filmen of fotograferen. Tik op "Toon knoppen" om terug te keren.' },
+    { icon:'💾', title:'Bewaar je werk', text:'Onderaan bewaar je alles naar je Foto\'s-app — als losse foto\'s of als samengevoegde video. Bij veel foto\'s of een grote video kan er een knop verschijnen die je zelf moet indrukken om te bewaren — dat is normaal gedrag van je toestel. Elk project wordt automatisch bewaard, dus je kan altijd later verdergaan.' },
   ];
   let obIndex = 0;
   function renderOnboardingStep(){
@@ -2094,11 +2255,19 @@
   };
 
   async function saveVideoClipsAll(){
-    for (let i=0; i<videoClips.length; i++){
-      await trySaveFile(videoFileFor(videoClips[i], i), `Stopmotion clip ${i+1}`);
-      await sleep(200);
+    const files = videoClips.map((c,i)=>videoFileFor(c,i));
+    if (!files.length) return;
+    // Probeer eerst alle clips in 1 keer te delen — vereist maar 1 tik.
+    if (navigator.canShare && files.length>1 && navigator.canShare({files})){
+      try{
+        await navigator.share({files, title:`Stopmotion video's (${files.length})`});
+        toast('Deelvenster geopend — kies "Bewaar video\'s"');
+        return;
+      }catch(e){ if (e && e.name==='AbortError') return; }
     }
-    toast('Video\'s geopend om te bewaren');
+    // 1 clip, of het delen van alles-in-1x lukte niet: elke clip vraagt
+    // dan een eigen, verse tik van de gebruiker (zie openBatchSaveModal).
+    openBatchSaveModal(files, {chunkSize:1, itemLabel:"video's", singularLabel:'video'});
   }
 
   $('choiceCancelBtn').onclick = ()=>{ $('saveChoiceModal').style.display = 'none'; };
@@ -2110,6 +2279,7 @@
     $('previewVideo').style.display = 'none';
     document.querySelector('#previewModal .pctl').style.display = 'none';
     $('exportVideoBtn').style.display = 'inline-block';
+    $('exportSaveBtn').style.display = 'none';
     $('exportStatus').textContent = '';
     $('previewModal').style.display = 'flex';
     exportVideo();
@@ -2120,33 +2290,46 @@
     saveAsSeparatePhotos();
   };
 
-  // Bewaart alle foto's als losse afbeeldingen, in kleine batches gedeeld —
-  // te veel bestanden in 1 keer delen faalt op iOS soms stilletjes (canShare
-  // geeft dan false terug), wat waarschijnlijk verklaart waarom foto's niet
-  // aankwamen. In batches van 8 is dat betrouwbaarder.
+  /* -------------------------------------------------------------------
+     BELANGRIJKE FIX: waarom foto's soms niet in de camera rol belandden.
+     -------------------------------------------------------------------
+     De Web Share API (navigator.share) staat maar 1 aanroep toe per
+     ECHTE, VERSE tik van de gebruiker. Vroeger liep deze functie in een
+     lus die na elke share() even pauzeerde (sleep) en dan de volgende
+     share() aanriep — maar zodra er ook maar even gewacht is, is de
+     "gebruikersactivatie" verlopen en weigert iOS/Android de volgende
+     share()-aanroep stilzwijgend. Daardoor werd realistisch gezien vaak
+     maar de allereerste groep foto's echt aangeboden aan de Foto's-app;
+     de rest viel terug op een minder betrouwbaar pad.
+     Oplossing: eerst proberen om ALLES in 1x te delen (1 tik volstaat
+     bijna altijd, ook bij tientallen foto's). Lukt dat niet, dan tonen
+     we een knop die de gebruiker zelf per groep moet indrukken — elke
+     druk is dan weer een geldige, verse gebruikersactie. */
   async function saveAsSeparatePhotos(){
     if (!frames.length){ toast('Nog geen foto\'s'); return; }
     const total = frames.length;
     const allFiles = await Promise.all(frames.map((f,i)=>fileFor(f,i,total)));
-    const CHUNK = 8;
+
     if (navigator.canShare){
-      for (let start=0; start<allFiles.length; start+=CHUNK){
-        const chunk = allFiles.slice(start, start+CHUNK);
-        const rangeLabel = `${start+1}-${Math.min(start+CHUNK,total)} van ${total}`;
-        if (navigator.canShare({files:chunk})){
-          try{
-            toast(`Bewaar foto's ${rangeLabel} — kies "Bewaar" in het deelvenster`, 3500);
-            await navigator.share({files:chunk, title:`Stopmotion foto's ${rangeLabel}`});
-            continue;
-          }catch(e){ /* geannuleerd/geblokkeerd — val terug op elk apart openen */ }
+      if (navigator.canShare({files: allFiles})){
+        try{
+          await navigator.share({files: allFiles, title:`Stopmotion foto's (${total})`});
+          toast('Deelvenster geopend — kies "Bewaar alle afbeeldingen"');
+          return;
+        }catch(e){
+          if (e && e.name === 'AbortError') return; // gebruiker annuleerde zelf
+          // val anders terug op de tik-per-groep flow hieronder
         }
-        for (const file of chunk){ await trySaveFile(file); await sleep(200); }
       }
-      toast('Klaar — controleer je Foto\'s-app');
+      openBatchSaveModal(allFiles, {chunkSize:8, itemLabel:"foto's", singularLabel:'foto'});
       return;
     }
-    for (const file of allFiles){ await trySaveFile(file); await sleep(200); }
-    toast('Bestanden geopend om te bewaren');
+
+    // Geen Web Share API beschikbaar (meestal een desktop-browser) — daar
+    // werkt de klassieke download-link wél gewoon automatisch na elkaar,
+    // dus geen tik-per-groep nodig.
+    for (const file of allFiles){ downloadFile(file); await sleep(150); }
+    toast('Foto\'s gedownload');
   }
 
   // iOS Safari negeert het download-attribuut op <a> en probeert de blob te
@@ -2170,7 +2353,9 @@
   }
 
   // Probeert een bestand te delen (Foto's-app), en valt anders netjes terug
-  // op downloadFile() — gebruikt overal waar we een los bestand willen bewaren.
+  // op downloadFile() — gebruikt waar we een LOS bestand bewaren vanuit een
+  // directe, verse tik (dus zonder voorafgaande await/pauze — zie hierboven
+  // waarom dat cruciaal is).
   async function trySaveFile(file, shareTitle){
     if (navigator.canShare && navigator.canShare({files:[file]})){
       try{
@@ -2182,6 +2367,65 @@
     return false;
   }
 
+  /* ---------------- INTERACTIEVE "PER GROEP BEWAREN"-MODAL ----------------
+     Toont een knop die de gebruiker zelf moet indrukken voor elke groep
+     bestanden — zodat elke navigator.share()-aanroep een geldige, verse
+     gebruikersactie is (zie uitleg hierboven bij saveAsSeparatePhotos). */
+  let batchSaveState = null;
+
+  function openBatchSaveModal(files, {chunkSize, itemLabel, singularLabel}){
+    batchSaveState = { files, index:0, chunkSize, itemLabel, singularLabel };
+    $('batchSaveModal').style.display = 'flex';
+    renderBatchSaveStep();
+  }
+  function closeBatchSaveModal(){
+    $('batchSaveModal').style.display = 'none';
+    batchSaveState = null;
+  }
+  function renderBatchSaveStep(){
+    const st = batchSaveState;
+    if (!st) return;
+    const totalGroups = Math.ceil(st.files.length/st.chunkSize);
+    if (st.index >= st.files.length){
+      $('batchSaveHeadline').textContent = 'Klaar';
+      $('batchSaveLead').textContent = `Alle ${st.files.length} ${st.itemLabel} zijn aangeboden om te bewaren. Controleer je Foto's-app.`;
+      $('batchSaveActionBtn').style.display = 'none';
+      $('batchSaveCloseBtn').textContent = 'Sluiten';
+      return;
+    }
+    const start = st.index, end = Math.min(st.index+st.chunkSize, st.files.length);
+    const n = end-start;
+    const groupNr = Math.floor(start/st.chunkSize)+1;
+    $('batchSaveHeadline').textContent = totalGroups>1 ? `Groep ${groupNr} van ${totalGroups}` : 'Bewaren';
+    $('batchSaveLead').textContent = n>1
+      ? `Tik op de knop om ${st.itemLabel} ${start+1}–${end} van ${st.files.length} te bewaren. Kies "Bewaar" in het venster dat opent, en herhaal daarna voor de volgende groep.`
+      : `Tik op de knop om ${st.singularLabel} ${start+1} van ${st.files.length} te bewaren. Kies "Bewaar" in het venster dat opent.`;
+    $('batchSaveActionBtn').style.display = 'block';
+    $('batchSaveActionBtn').textContent = start===0 ? `Bewaar ${n>1 ? n+' '+st.itemLabel : 'deze '+st.singularLabel}` : 'Volgende groep bewaren';
+    $('batchSaveCloseBtn').textContent = 'Annuleren';
+  }
+  $('batchSaveActionBtn').onclick = async ()=>{
+    const st = batchSaveState;
+    if (!st) return;
+    const start = st.index, end = Math.min(st.index+st.chunkSize, st.files.length);
+    const chunk = st.files.slice(start, end);
+    const btn = $('batchSaveActionBtn');
+    btn.disabled = true;
+    // Precies 1 share()-aanroep, rechtstreeks vanuit deze tik-handler —
+    // essentieel: geen enkele await ervoor, zodat de gebruikersactivatie
+    // nog vers is.
+    if (navigator.canShare && navigator.canShare({files: chunk})){
+      try{ await navigator.share({files: chunk}); }
+      catch(e){ if (!(e && e.name==='AbortError')) chunk.forEach(downloadFile); }
+    } else {
+      chunk.forEach(downloadFile);
+    }
+    st.index = end;
+    btn.disabled = false;
+    renderBatchSaveStep();
+  };
+  $('batchSaveCloseBtn').onclick = closeBatchSaveModal;
+
   $('zipBtn').onclick = async ()=>{
     if (!frames.length){ toast('Nog geen foto\'s'); return; }
     if (typeof JSZip === 'undefined'){ toast('ZIP-library kon niet laden'); return; }
@@ -2191,8 +2435,10 @@
     toast('ZIP wordt gemaakt…');
     const content = await zip.generateAsync({type:'blob'});
     const file = new File([content], 'stopmotion.zip', {type:'application/zip'});
-    const shared = await trySaveFile(file, 'Stopmotion ZIP');
-    toast(shared ? 'Deelvenster geopend' : 'ZIP geopend in nieuw tabblad — bewaar hem van daaruit');
+    // Het inpakken hierboven kan bij grote projecten even duren — net als bij
+    // video-export vragen we daarom een expliciete tik voor het bewaren, in
+    // plaats van meteen automatisch te delen (zie uitleg bij exportVideo()).
+    openBatchSaveModal([file], {chunkSize:1, itemLabel:"ZIP-bestand", singularLabel:'ZIP-bestand'});
   };
 
   /* individual save via long-press style — tap thumb num area for single share could be added later */
@@ -2213,6 +2459,7 @@
     $('previewVideo').pause();
     document.querySelector('#previewModal .pctl').style.display = 'flex';
     $('exportVideoBtn').style.display = 'inline-block';
+    $('exportSaveBtn').style.display = 'none';
     $('previewModal').style.display = 'flex';
     playIdx = 0; playing = true;
     $('playPause').textContent = '⏸';
@@ -2223,6 +2470,7 @@
     $('previewImg').style.display = 'none';
     document.querySelector('#previewModal .pctl').style.display = 'none';
     $('exportVideoBtn').style.display = 'none';
+    $('exportSaveBtn').style.display = 'none';
     $('exportStatus').textContent = '';
     const v = $('previewVideo');
     v.style.display = 'block';
@@ -2267,6 +2515,9 @@
   function sleep(ms){ return new Promise(r=>setTimeout(r, ms)); }
 
   $('exportVideoBtn').onclick = exportVideo;
+  // Bevat de klaargezette video totdat de gebruiker expliciet op
+  // "Bewaar in Foto's" tikt (zie exportVideo() en de handler hieronder).
+  let pendingVideoFile = null;
 
   async function exportVideo(){
     if (!frames.length){ toast('Nog geen foto\'s om te exporteren'); return; }
@@ -2360,18 +2611,43 @@
       const fileName = (currentProjectName ? currentProjectName.replace(/[^\w\-]+/g,'_') : 'stopmotion') + '.' + ext;
       const file = new File([blob], fileName, {type: outType});
 
+      // BELANGRIJKE FIX: hierboven kan het encoderen makkelijk enkele
+      // seconden tot minuten duren. Tegen die tijd is de gebruikersactivatie
+      // van de tik op "Exporteer als video" allang verlopen, waardoor een
+      // automatische navigator.share()-aanroep hier stilzwijgend geweigerd
+      // kan worden en de video dus NIET aankomt in Foto's. Daarom tonen we
+      // in plaats daarvan een knop die de gebruiker zelf indrukt — dat is
+      // weer een geldige, verse gebruikersactie.
+      pendingVideoFile = file;
       statusEl.textContent = '';
-      const shared = await trySaveFile(file, 'Stopmotion video');
-      toast(shared ? 'Deelvenster geopend — kies "Bewaar video"' : 'Video geopend in nieuw tabblad — bewaar hem van daaruit');
+      btn.style.display = 'none';
+      const saveBtn = $('exportSaveBtn');
+      saveBtn.style.display = 'inline-block';
+      saveBtn.disabled = false;
+      saveBtn.textContent = "💾 Bewaar in Foto's";
+      toast('Video klaar! Tik op "Bewaar in Foto\'s"', 3200);
     }catch(err){
       console.error(err);
       toast('Video-export mislukt: ' + (err.message||err.name||'onbekende fout'));
     } finally {
       btn.disabled = false;
-      btn.textContent = '🎬 Exporteer als video';
+      if (!pendingVideoFile){ btn.textContent = '🎬 Exporteer als video'; }
       statusEl.textContent = '';
     }
   }
+
+  // Bewaren gebeurt pas na een expliciete tik op deze knop (zie uitleg
+  // hierboven in exportVideo) — dat is de eerste await in deze handler,
+  // dus de gebruikersactivatie van déze tik is nog helemaal vers.
+  $('exportSaveBtn').onclick = async ()=>{
+    if (!pendingVideoFile) return;
+    const saveBtn = $('exportSaveBtn');
+    saveBtn.disabled = true;
+    const shared = await trySaveFile(pendingVideoFile, 'Stopmotion video');
+    toast(shared ? 'Deelvenster geopend — kies "Bewaar video"' : 'Video geopend in nieuw tabblad — bewaar hem van daaruit');
+    pendingVideoFile = null;
+    saveBtn.disabled = false;
+  };
 
 })();
 </script>
