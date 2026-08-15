@@ -17,21 +17,27 @@
 <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root{
+    /* Lichte, warme look. --ink/--paper blijven bestaan als vaste
+       "donker"/"licht"-accentkleuren (tekst op felle knoppen, randen op
+       de donkere camera-viewfinder) — het algemene uiterlijk van de app
+       wordt bepaald door --bg/--fg/--panel/--panel-2/--line hieronder. */
     --ink:#0c0c0d;
     --paper:#f7f5f0;
+    --bg:#f3efe6;
+    --fg:#242119;
     --marker:#ff3d5a;
-    --marker-dim:#b8283d;
-    --line:#0c0c0d;
+    --marker-dim:#9c2233;
+    --line:#9c8e70;
     --ghost:rgba(255,255,255,.55);
-    --panel:#141416;
-    --panel-2:#1c1c1f;
-    --ok:#38e07a;
-    --accent2:#f2b544;
+    --panel:#fffdfa;
+    --panel-2:#ece6d8;
+    --ok:#2fae67;
+    --accent2:#a5660c;
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
   html,body{
     margin:0; padding:0; height:100%;
-    background:var(--ink); color:var(--paper);
+    background:var(--bg); color:var(--fg);
     font-family:'Space Grotesk', system-ui, sans-serif;
     overscroll-behavior:none;
     -webkit-user-select:none; user-select:none;
@@ -59,12 +65,12 @@
   #topbar .headline{ font-size:14px; }
   #topbar .sub{ font-size:10px; opacity:.55; text-transform:none; letter-spacing:0; font-family:'Space Grotesk';}
   .iconbtn{
-    background:var(--panel-2); color:var(--paper);
+    background:var(--panel-2); color:var(--fg);
     border:2px solid var(--line); border-radius:9px;
     width:34px; height:34px; display:flex; align-items:center; justify-content:center;
     font-size:15px; cursor:pointer; flex:0 0 auto;
   }
-  .iconbtn.active{ background:var(--marker); border-color:var(--marker); }
+  .iconbtn.active{ background:var(--ok); border-color:var(--ok); color:var(--ink); }
 
   /* ---------- SETUP SCREEN ---------- */
   #setup{
@@ -83,12 +89,12 @@
   }
   .chipgrid{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom:24px; }
   .chip{
-    border:2px solid var(--line); background:var(--panel-2); color:var(--paper);
+    border:2px solid var(--line); background:var(--panel-2); color:var(--fg);
     padding:9px 14px; border-radius:10px; font-size:13px; font-weight:600;
     cursor:pointer; display:flex; align-items:center; gap:6px;
   }
   .chip small{ opacity:.55; font-weight:400; }
-  .chip.selected{ background:var(--marker); border-color:var(--paper); }
+  .chip.selected{ background:var(--ok); border-color:var(--ink); color:var(--ink); }
 
   #projectsList{ margin-bottom:6px; }
   #projectsList .empty{ font-size:12px; opacity:.5; margin:0 0 22px; line-height:1.5; }
@@ -111,22 +117,22 @@
   .customrow{ display:flex; gap:8px; align-items:center; margin-top:2px; }
   .customrow input{
     width:64px; background:var(--panel-2); border:2px solid var(--line);
-    color:var(--paper); border-radius:8px; padding:8px; font-size:14px; text-align:center;
+    color:var(--fg); border-radius:8px; padding:8px; font-size:14px; text-align:center;
     font-family:inherit;
   }
   select{
-    width:100%; background:var(--panel-2); color:var(--paper);
+    width:100%; background:var(--panel-2); color:var(--fg);
     border:2px solid var(--line); border-radius:10px; padding:10px 12px;
     font-size:13px; font-family:inherit; margin-bottom:24px;
   }
   #startBtn{
     position:sticky; bottom:14px; width:100%;
-    background:var(--marker); color:var(--ink); border:3px solid var(--line);
+    background:var(--ok); color:var(--ink); border:3px solid var(--ink);
     border-radius:14px; padding:16px; font-family:'Archivo Black';
     text-transform:uppercase; font-size:15px; letter-spacing:.03em;
-    cursor:pointer; box-shadow:0 6px 0 var(--line);
+    cursor:pointer; box-shadow:0 6px 0 var(--ink);
   }
-  #startBtn:active{ transform:translateY(4px); box-shadow:0 2px 0 var(--line); }
+  #startBtn:active{ transform:translateY(4px); box-shadow:0 2px 0 var(--ink); }
 
   /* ---------- CAMERA SCREEN ---------- */
   #camScreen{ display:none; flex:1; flex-direction:column; min-height:0; }
@@ -219,19 +225,19 @@
   }
   .ghostctl{ display:flex; align-items:center; gap:8px; flex:1; }
   .ghostctl label{ font-size:10px; opacity:.6; white-space:nowrap; text-transform:uppercase; letter-spacing:.06em;}
-  input[type=range]{ flex:1; accent-color:var(--marker); }
+  input[type=range]{ flex:1; accent-color:var(--ok); }
 
   #toolsRow{
     display:flex; flex-wrap:wrap; gap:8px; padding:0 14px 10px; background:var(--panel);
   }
   .toolbtn{
-    flex:1 1 calc(50% - 4px); min-width:120px; background:var(--panel-2); color:var(--paper);
+    flex:1 1 calc(50% - 4px); min-width:120px; background:var(--panel-2); color:var(--fg);
     border:2px solid var(--line); border-radius:9px;
     padding:8px 10px; font-size:11px; font-weight:600;
     cursor:pointer; text-align:center;
   }
   .toolbtn b{ font-weight:700; }
-  .toolbtn.active{ background:var(--marker); border-color:var(--marker); }
+  .toolbtn.active{ background:var(--ok); border-color:var(--ok); color:var(--ink); }
   #portraitCtl{
     display:flex; align-items:center; gap:8px;
     padding:0 14px 10px; background:var(--panel);
@@ -255,11 +261,11 @@
     padding:8px 14px 0; background:var(--panel);
   }
   .modeBtn{
-    background:transparent; color:var(--paper); opacity:.5;
+    background:transparent; color:var(--fg); opacity:.5;
     border:none; padding:6px 16px; font-size:12px; font-weight:700;
     letter-spacing:.06em; cursor:pointer; border-bottom:3px solid transparent;
   }
-  .modeBtn.active{ opacity:1; border-bottom-color:var(--marker); }
+  .modeBtn.active{ opacity:1; border-bottom-color:var(--ok); }
 
   #shutterRow{
     display:flex; align-items:center; justify-content:center; gap:22px;
@@ -267,8 +273,8 @@
   }
   #shutter{
     width:74px; height:74px; border-radius:50%;
-    background:var(--marker); border:4px solid var(--paper);
-    box-shadow:0 0 0 3px var(--line);
+    background:var(--marker); border:4px solid var(--ink);
+    box-shadow:0 0 0 3px var(--panel);
     cursor:pointer; transition:border-radius .15s ease;
   }
   #shutter:active{ background:var(--marker-dim); }
@@ -295,6 +301,7 @@
     position:absolute; left:0; right:0; bottom:0; z-index:15;
     background:linear-gradient(to top, rgba(12,12,13,.75), rgba(12,12,13,0));
     border-top:none; padding-bottom:calc(18px + env(safe-area-inset-bottom, 0px));
+    color:var(--paper);
   }
   #exitFsBtn{
     display:none; position:absolute; top:calc(14px + env(safe-area-inset-top, 0px)); right:14px; z-index:16;
@@ -304,11 +311,17 @@
     box-shadow:0 3px 10px rgba(0,0,0,.5);
   }
   #app.fs-active #exitFsBtn{ display:flex; }
+  /* de sluiterknop-rand/-ring is normaal donker (voor contrast op de
+     lichte knoppenbalk) maar moet in volledig scherm weer licht zijn,
+     want daar ligt de rij over het donkere camerabeeld. */
+  #app.fs-active #shutter{
+    border-color:var(--paper); box-shadow:0 0 0 3px rgba(0,0,0,.35);
+  }
 
   /* filmstrip */
   #filmstrip{
     display:flex; gap:8px; overflow-x:auto; padding:10px 12px;
-    background:var(--ink); border-top:3px solid var(--line);
+    background:var(--panel-2); border-top:3px solid var(--line);
     touch-action:pan-x; -webkit-overflow-scrolling:touch; overscroll-behavior-x:contain;
   }
   /* geen foto's? Dan neemt de strip geen ruimte in — de compacte hint
@@ -320,7 +333,7 @@
   }
   #videoStrip{
     display:flex; gap:8px; overflow-x:auto; padding:0 12px 10px;
-    background:var(--ink);
+    background:var(--panel-2);
     touch-action:pan-x; -webkit-overflow-scrolling:touch; overscroll-behavior-x:contain;
   }
   #videoStrip:empty{ display:none; }
@@ -345,7 +358,7 @@
   .thumb img{ width:100%; height:100%; object-fit:cover; display:block; }
   .thumb .num{
     position:absolute; top:2px; left:3px; font-size:9px; font-weight:700;
-    background:rgba(0,0,0,.6); padding:1px 4px; border-radius:4px;
+    background:rgba(0,0,0,.6); color:#fff; padding:1px 4px; border-radius:4px;
   }
   .thumb .del{
     position:absolute; top:1px; right:1px; width:16px; height:16px;
@@ -354,10 +367,10 @@
     line-height:1;
   }
   .thumb.selectable{ cursor:pointer; }
-  .thumb.selected{ border-color:var(--marker); box-shadow:0 0 0 2px rgba(255,61,90,.5); }
+  .thumb.selected{ border-color:var(--ok); box-shadow:0 0 0 2px rgba(47,174,103,.5); }
   .thumb .selBadge{
     position:absolute; bottom:2px; right:2px; width:18px; height:18px;
-    background:var(--marker); color:#fff; border-radius:50%;
+    background:var(--ok); color:var(--ink); border-radius:50%;
     font-size:10px; font-weight:700; display:flex; align-items:center; justify-content:center;
     border:1px solid var(--paper);
   }
@@ -370,13 +383,13 @@
   #selectCount{ font-size:11px; opacity:.7; }
 
   .barbtn{
-    flex:1; border:2px solid var(--line); background:var(--panel-2); color:var(--paper);
+    flex:1; border:2px solid var(--line); background:var(--panel-2); color:var(--fg);
     border-radius:10px; padding:11px 8px; font-size:11px; font-weight:700;
     text-transform:uppercase; letter-spacing:.03em; cursor:pointer;
     display:flex; flex-direction:column; align-items:center; gap:2px;
   }
-  .barbtn.primary{ background:var(--ok); color:var(--ink); border-color:var(--paper); }
-  .barbtn.danger{ background:var(--panel-2); color:var(--marker); border-color:var(--marker); }
+  .barbtn.primary{ background:var(--ok); color:var(--ink); border-color:var(--ink); }
+  .barbtn.danger{ background:var(--panel-2); color:var(--marker-dim); border-color:var(--marker-dim); }
 
   /* uitklap-knop: duidelijk zichtbaar als knop (pil met rand + chevron),
      tik of sleep om foto's/actieknoppen te verbergen en het beeld groter
@@ -408,6 +421,7 @@
   #previewModal{
     position:fixed; inset:0; background:rgba(0,0,0,.92); z-index:50;
     display:none; align-items:center; justify-content:center; flex-direction:column;
+    color:var(--paper);
   }
   #previewModal img{ max-width:88%; max-height:60%; border:3px solid var(--paper); border-radius:10px; background:#000; }
   #previewModal .pctl{ margin-top:18px; display:flex; gap:14px; align-items:center; }
@@ -422,7 +436,7 @@
     flex-direction:row; gap:8px;
     padding:13px 22px; margin-top:22px;
     border-radius:12px; font-size:12px;
-    background:var(--panel-2); color:var(--accent2);
+    background:var(--panel); color:var(--accent2);
     border:2px solid var(--accent2);
     box-shadow:0 4px 0 rgba(0,0,0,.4);
   }
@@ -500,7 +514,7 @@
     background:linear-gradient(135deg,#e8d9c3 0%,#9a9a9a 100%);
   }
   .filterChip.selected .swatch{
-    border-color:var(--marker); box-shadow:0 0 0 3px rgba(255,61,90,.35);
+    border-color:var(--ok); box-shadow:0 0 0 3px rgba(47,174,103,.35);
   }
   .filterChip span{ font-size:10px; opacity:.75; text-align:center; max-width:66px; }
 
@@ -534,20 +548,20 @@
      destructieve acties in een kleinere, minder opvallende rij eronder —
      zodat er geen wirwar van gelijkwaardig ogende knoppen ontstaat. */
   #bottomBar{
-    display:flex; padding:10px 12px 6px; background:var(--ink);
+    display:flex; padding:10px 12px 6px; background:var(--panel);
   }
   #bottomBar .pillbtn{ flex:1; }
   #dangerBar{
-    display:flex; gap:8px; padding:2px 12px calc(14px + env(safe-area-inset-bottom, 0px)); background:var(--ink);
+    display:flex; gap:8px; padding:2px 12px calc(14px + env(safe-area-inset-bottom, 0px)); background:var(--panel);
   }
   #dangerBar .pillbtn{ flex:1; padding:9px 10px; font-size:10px; opacity:.8; }
   .pillbtn{
-    flex:0 0 auto; border:2px solid var(--line); background:var(--panel-2); color:var(--paper);
+    flex:0 0 auto; border:2px solid var(--line); background:var(--panel-2); color:var(--fg);
     border-radius:20px; padding:11px 16px; font-size:11px; font-weight:700;
     text-transform:uppercase; letter-spacing:.03em; cursor:pointer; white-space:nowrap;
   }
-  .pillbtn.primary{ background:var(--ok); color:var(--ink); border-color:var(--paper); }
-  .pillbtn.danger{ background:var(--panel-2); color:var(--marker); border-color:var(--marker); }
+  .pillbtn.primary{ background:var(--ok); color:var(--ink); border-color:var(--ink); }
+  .pillbtn.danger{ background:var(--panel-2); color:var(--marker-dim); border-color:var(--marker-dim); }
 
   #toast{
     position:fixed; left:50%; bottom:26px; transform:translateX(-50%) translateY(20px);
@@ -569,8 +583,8 @@
     padding:26px 22px 22px; text-align:center;
   }
   #obDots{ display:flex; justify-content:center; gap:6px; margin-bottom:18px; }
-  #obDots span{ width:7px; height:7px; border-radius:50%; background:rgba(255,255,255,.25); }
-  #obDots span.active{ background:var(--marker); }
+  #obDots span{ width:7px; height:7px; border-radius:50%; background:var(--line); }
+  #obDots span.active{ background:var(--ok); }
   #obIcon{ font-size:40px; margin-bottom:12px; }
   #onboarding .row{ display:flex; gap:8px; }
 
